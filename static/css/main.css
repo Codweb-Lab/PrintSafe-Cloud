@@ -324,13 +324,13 @@ header h1 {
 
 /* --- PrintSafe-Cloud Premium Footer Styling --- */
 .printsafe-footer {
-    background-color: #f8f9fa; /* एकदम लाइट और क्लीन बैकग्राउंड */
+    background-color: #f8f9fa;
     padding: 20px 0;
     text-align: center;
     border-top: 1px solid #e9ecef;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     font-size: 14px;
-    color: #6c757d; /* प्रोफेशनल ग्रे कलर */
+    color: #6c757d; 
     position: relative;
     bottom: 0;
     width: 100%;
@@ -344,7 +344,6 @@ header h1 {
     justify-content: center;
 }
 
-/* स्क्रीन चौड़ी होने पर दोनों टेक्स्ट एक लाइन में आ जाएंगे */
 @media (min-width: 768px) {
     .footer-content {
         flex-direction: row;
@@ -359,12 +358,11 @@ header h1 {
 }
 
 .company-name {
-    color: #1a73e8; /* आपकी थीम का टेक-ब्लू कलर */
+    color: #1a73e8; 
     font-weight: 700;
     letter-spacing: 0.5px;
 }
 
-/* ❤️ दिल के लिए धड़कने वाला मस्त एनिमेशन */
 .heart-icon {
     color: #e63946;
     display: inline-block;

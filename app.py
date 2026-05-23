@@ -14,7 +14,7 @@ app = Flask(__name__)
 def index():
     return render_template('index.html')
 
-# 🚀 1. यह पूरे फोल्डर और फाइलों का नेस्टेड ट्री स्ट्रक्चर लाएगा
+# 1. This will retrieve the nested tree structure of the entire folder and its files.
 @app.route('/fetch-vault-list', methods=['POST'])
 def fetch_vault_list():
     data = request.get_json() or {}
@@ -23,25 +23,25 @@ def fetch_vault_list():
     if password != SECRET_PRINT_PASSWORD:
         return jsonify({"error": "Unauthorized Access!"}), 403
 
-    # 🧠 पूरे डायरेक्टरी स्ट्रक्चर को स्कैन करने वाला इन-मेमोरी फंक्शन
+    # An in-memory function that scans the entire directory structure.
     def build_tree(current_dir):
         tree = []
         try:
             for entry in os.scandir(current_dir):
-                # सिर्फ वैलिड एक्सटेंशन को ही फिल्टर करेंगे
+                # Filter only valid extensions
                 ext = entry.name.split('.')[-1].lower() if '.' in entry.name else ''
                 
                 if entry.is_dir():
-                    # अगर फोल्डर है, तो उसके अंदर भी स्कैन करो (Recursion)
+                    # If it's a folder, scan inside it (Recursion)
                     sub_tree = build_tree(entry.path)
-                    # सिर्फ वही फोल्डर्स दिखाएं जो खाली न हों या जिनमें हमारी वैलिड फाइल्स हों
+                    # Show only those folders which are not empty or contain our valid files
                     tree.append({
                         "name": entry.name,
                         "type": "folder",
                         "children": sub_tree
                     })
                 elif entry.is_file() and ext in ['pdf', 'jpg', 'jpeg', 'png', 'webp']:
-                    # अगर वैलिड फाइल है, तो नाम और साइज लो
+                    # If it is a valid file, take its name and size.
                     tree.append({
                         "name": entry.name,
                         "type": "file",
@@ -51,23 +51,23 @@ def fetch_vault_list():
         except Exception as e:
             print(f"Error scanning {current_dir}: {e}")
         
-        # फोल्डर्स पहले दिखें और फाइल्स बाद में, इसके लिए सॉर्टिंग
+        # Sorting to display folders first and files afterwards.
         return sorted(tree, key=lambda x: (x['type'] != 'folder', x['name'].lower()))
 
     try:
-        # मुख्य डाउनलोड फोल्डर से स्कैनिंग शुरू करें
+        # Start scanning from the main download folder
         vault_tree = build_tree(DOCUMENTS_DIR)
         return jsonify({"tree": vault_tree})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-# 🚀 2. यह एंडपॉइंट अब सब-फोल्डर्स के अंदर की फाइलों को भी उनके रिलेटिव पाथ से ढूंढेगा
+# 2. This endpoint will now find files inside sub-folders as well using their relative path
 @app.route('/fetch-file-data', methods=['POST'])
 def fetch_file_data():
     data = request.get_json() or {}
     password = data.get('password')
-    relative_path = data.get('filename') # अब इसमें फोल्डर का पाथ भी शामिल होगा (e.g., "Folder/Sub/file.pdf")
+    relative_path = data.get('filename') # This will now include the folder path as well (e.g., "Folder/Sub/file.pdf")
 
     if password != SECRET_PRINT_PASSWORD:
         return jsonify({"error": "Unauthorized Access!"}), 403
@@ -75,10 +75,10 @@ def fetch_file_data():
     if not relative_path:
         return jsonify({"error": "File path is required!"}), 400
 
-    # 🎯 सुरक्षा फिक्स: डायरेक्टरी ट्रैवर्सल अटैक रोकने के लिए सुरक्षित कंबाइन
+    # Security Fix: Securely combine paths to prevent directory traversal attacks
     secure_path = os.path.normpath(os.path.join(DOCUMENTS_DIR, relative_path))
-    
-    # पक्का करें कि फाइल मुख्य डायरेक्टरी के बाहर की न हो
+
+    # Ensure the file is not outside the main directory
     if not secure_path.startswith(os.path.normpath(DOCUMENTS_DIR)):
         return jsonify({"error": "Access Denied!"}), 403
 

@@ -1,5 +1,5 @@
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-  "{{ url_for('static', filename='pdf.worker.min.js') }}";
+pdfjsLib.GlobalWorkerOptions.workerSrc = '/static/js/pdf.worker.min.js';
+  //"{{ url_for('static', filename='./pdf.worker.min.js') }}";
 
 document.addEventListener("keydown", (e) => {
   if (e.ctrlKey && (e.key === "s" || e.key === "S")) e.preventDefault();
@@ -149,6 +149,7 @@ async function showIntegratedPreview(
   }
 }
 
+
 function submitFilePassword(filename, formElement) {
   const container = document.getElementById("preview-raster-pages-area");
   const cardElement = container.querySelector(".file-lock-form").cardRef;
@@ -157,7 +158,7 @@ function submitFilePassword(filename, formElement) {
   showIntegratedPreview(filename, "pdf", cardElement, enteredPass);
 }
 
-/* 🎯 🖨️ द अल्टीमेट टाइमर-मुक्त इवेंट प्रिंटर Engine */
+/* 🎯 🖨️ The Ultimate Timer-Free Event Printer Engine */
 function triggerCleanVectorPrint() {
   if (!activeFile.base64) return;
 
@@ -251,7 +252,7 @@ function closePreviewPane() {
   document.getElementById("integrated-preview-pane").style.display = "none";
   document
     .getElementById("integrated-preview-pane")
-    .classList.remove("fullscreen-pane"); // फुलस्क्रीन रीसेट
+    .classList.remove("fullscreen-pane"); // Reset fullscreen
   document
     .querySelectorAll(".file-card")
     .forEach((c) => c.classList.remove("active"));
