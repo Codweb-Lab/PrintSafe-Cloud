@@ -61,6 +61,22 @@ def fetch_vault_list():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+def get_windows_file_type(file_name, is_folder=False):
+    """बिना किसी हार्डकोडिंग के, फ़ाइल नेम से डायनेमिकली विंडोज़-स्टाइल टाइप बनाना"""
+    if is_folder:
+        return "File folder"
+    
+    # फ़ाइल नेम से एक्सटेंशन अलग करें (जैसे: 'app.py' -> '.py')
+    _, ext = os.path.splitext(file_name)
+    
+    if not ext:
+        return "Unknown File"
+        
+    # डॉट (.) को हटाएँ और पूरे एक्सटेंशन को अपरकेस (UPPERCASE) करें (जैसे: 'py' -> 'PY')
+    clean_ext = ext.replace('.', '').upper()
+    
+    # सीधा डायनेमिक नाम रिटर्न करें (जैसे: 'PY File', 'PDF File', 'PNG File')
+    return f"{clean_ext} File"
 
 # 2. This endpoint will now find files inside sub-folders as well using their relative path
 @app.route('/fetch-file-data', methods=['POST'])

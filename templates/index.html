@@ -47,6 +47,10 @@
 
     <div style="display: flex; align-items: center; gap: 8px;">
         <span style="font-size: 12px; font-weight: 600; color: #5f6368;">Sort By:</span>
+        <div class="az-filter-wrapper">
+        <button id="az-trigger-btn" onclick="toggleAZGrid()"># A-Z</button>
+        <div id="az-popup-grid" class="az-popup-grid hidden"></div>
+    </div>
         <select id="drive-sort-by" style="padding: 8px; border: 1px solid #dadce0; border-radius: 4px; background: white;" onchange="renderCurrentFolderLevel()">
             <option value="name-asc">🔤 Name (A to Z)</option>
             <option value="name-desc">🔤 Name (Z to A)</option>

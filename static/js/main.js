@@ -1,3 +1,6 @@
+// Global thumbnail cache manager
+const thumbnailCache = {};
+
 pdfjsLib.GlobalWorkerOptions.workerSrc = '/static/js/pdf.worker.min.js';
   //"{{ url_for('static', filename='./pdf.worker.min.js') }}";
 
@@ -370,6 +373,11 @@ function renderCurrentFolderLevel(appendMode = false) {
       return matchesSearch && matchesType;
     });
 
+    // जैसे ही फोल्डर का डेटा फ़िल्टर होकर तैयार हो, उसे तुरंत ए-जेड के लिए सिंक करें
+  if (!appendMode) {
+      window.currentDirectoryItemsRaw = lazyFilteredItems;
+  }
+
     // In-Memory Sorting
     lazyFilteredItems.sort((a, b) => {
       if (a.type === "folder" && b.type !== "folder") return -1;
@@ -452,61 +460,67 @@ function renderCurrentFolderLevel(appendMode = false) {
   );
   lazyCurrentIndex += nextSlice.length;
 
-  // 3. Upgrade this batch item into the grid
-  nextSlice.forEach((item) => {
+  // ========================================================================
+  // 📁 WINDOWS EXPLORER STYLE: फोल्डर्स अलग और फाइल्स अलग करें
+  // ========================================================================
+  const sliceFolders = nextSlice.filter(item => item.type === "folder");
+  const sliceFiles = nextSlice.filter(item => item.type !== "folder");
+
+  // 1. पहले सिर्फ फोल्डर्स रेंडर करें
+  sliceFolders.forEach((item) => {
     const card = document.createElement("div");
     card.className = "file-card";
-
-    if (item.type === "folder") {
-      card.innerHTML = `
-                        <div class="file-thumbnail-zone" style="background: #fff8e1; font-size: 45px;">📁</div>
-                        <div class="file-info">
-                            <span class="file-name" title="${item.name}" style="font-weight:600; color:#e65100;">${item.name}</span>
-                        </div>
-                    `;
-      card.onclick = () => {
+    card.innerHTML = `
+        <div class="file-thumbnail-zone" style="background: #fff8e1; font-size: 45px;">📁</div>
+        <div class="file-info">
+            <span class="file-name" title="${item.name}" style="font-weight:600; color:#e65100;">${item.name}</span>
+        </div>
+    `;
+    card.onclick = () => {
         const searchBar = document.getElementById("drive-search-input");
         if (searchBar) searchBar.value = "";
         currentFolderNavigation.push(item.name);
-        renderCurrentFolderLevel(false); // Load fresh folder
-      };
-    } else {
-      const icon = item.file_type === "pdf" ? "📄" : "🖼️";
-      const thumbId = `thumb-${item.name.replace(/\s+/g, "-")}`;
-      const displaySize = formatFileSize(item.size);
+        renderCurrentFolderLevel(false);
+    };
+    grid.appendChild(card);
+  });
 
-      card.innerHTML = `
-                        <div class="file-thumbnail-zone" id="${thumbId}">
-                            <div class="thumb-spinner"></div>
-                        </div>
-                        <div class="file-info" style="flex-direction: column; align-items: flex-start; gap: 2px;">
-                            <div style="display: flex; align-items: center; gap: 8px; width: 100%;">
-                                <span class="file-icon">${icon}</span>
-                                <span class="file-name" title="${item.name}" style="flex: 1;">${item.name}</span>
-                            </div>
-                            <span style="font-size: 10px; color: #5f6368; padding-left: 24px;">${displaySize}</span>
-                        </div>
-                    `;
+  // 2. बीच में विंडोज़ स्टाइल हल्की सी डिवाइडर लाइन (अगर फोल्डर और फाइल दोनों हैं)
+  if (sliceFolders.length > 0 && sliceFiles.length > 0) {
+    const divider = document.createElement('div');
+    divider.className = "explorer-divider";
+    grid.appendChild(divider);
+  }
 
-      const relativeFilePath =
+  // 3. अब सिर्फ फाइल्स रेंडर करें
+  sliceFiles.forEach((item) => {
+    const card = document.createElement("div");
+    card.className = "file-card";
+    const icon = item.file_type === "pdf" ? "📄" : "🖼️";
+    const thumbId = `thumb-${item.name.replace(/\s+/g, "-")}`;
+    const displaySize = formatFileSize(item.size);
+
+    card.innerHTML = `
+        <div class="file-thumbnail-zone" id="${thumbId}">
+            <div class="thumb-spinner"></div>
+        </div>
+        <div class="file-info" style="flex-direction: column; align-items: flex-start; gap: 2px;">
+            <div style="display: flex; align-items: center; gap: 8px; width: 100%;">
+                <span class="file-icon">${icon}</span>
+                <span class="file-name" title="${item.name}" style="flex: 1;">${item.name}</span>
+            </div>
+            <span style="font-size: 10px; color: #5f6368; padding-left: 24px;">${displaySize}</span>
+        </div>
+    `;
+
+    const relativeFilePath =
         currentFolderNavigation.length > 0
           ? currentFolderNavigation.join("/") + "/" + item.name
           : item.name;
 
-      card.onclick = () =>
-        showIntegratedPreview(relativeFilePath, item.file_type, card);
+    card.onclick = () => showIntegratedPreview(relativeFilePath, item.file_type, card);
 
-      // The thumbnail will load only when this card is injected into the grid.
-      setTimeout(
-        () =>
-          fetchAndRenderSingleThumbnail(
-            relativeFilePath,
-            item.file_type,
-            thumbId,
-          ),
-        5,
-      );
-    }
+    setTimeout(() => fetchAndRenderSingleThumbnail(relativeFilePath, item.file_type, thumbId), 5);
     grid.appendChild(card);
   });
 
@@ -559,6 +573,31 @@ async function fetchAndRenderSingleThumbnail(
   fileType,
   thumbId,
 ) {
+  const placeholder = document.getElementById(thumbId);
+  if (!placeholder) return;
+
+  // 🔍 स्टेप 1: चेक करो कि क्या यह फ़ाइल पहले से ही कैशे में है?
+  if (thumbnailCache[relativeFilePath]) {
+    placeholder.innerHTML = "";
+    
+    if (thumbnailCache[relativeFilePath].status === "protected") {
+      // अगर पहले पता चल चुका है कि यह प्रोटेक्टेड है, तो सीधे ताला दिखाओ
+      placeholder.innerHTML = `<div class="protected-badge">🔒 Protected</div>`;
+    } else if (thumbnailCache[relativeFilePath].status === "error") {
+      // अगर पहले एरर आया था, तो सीधा एरर दिखाओ
+      placeholder.innerHTML = `<span style="font-size:11px;color:#888">Load Error</span>`;
+    } else {
+      // अगर सक्सेसफुल थंबनेल (चाहे PDF हो या Image) है, तो सीधा कैशे से लोड करो
+      const cachedImg = document.createElement("img");
+      cachedImg.src = thumbnailCache[relativeFilePath].dataUrl;
+      placeholder.appendChild(cachedImg);
+    }
+    return; // 🎯 यहीं से वापस लौट जाओ, नीचे का नेटवर्क या PDF.js का हैवी कोड चलेगा ही नहीं!
+  }
+
+  // ---------------------------------------------------------------------
+  // अगर कैशे में नहीं है, तो नीचे का ओरिजिनल लॉजिक पहली बार के लिए चलेगा
+  // ---------------------------------------------------------------------
   const controller = new AbortController();
   activeThumbnailRequests.push(controller);
 
@@ -575,13 +614,13 @@ async function fetchAndRenderSingleThumbnail(
 
     if (!response.ok) return;
     const fileData = await response.json();
-    const binary = Uint8Array.from(atob(fileData.base64), (c) =>
-      c.charCodeAt(0),
-    );
-    const placeholder = document.getElementById(thumbId);
-    if (!placeholder) return;
+    
+    // अगर HTML से एलिमेंट हट चुका है तो आगे प्रोसेस करने की जरूरत नहीं
+    const currentPlaceholder = document.getElementById(thumbId);
+    if (!currentPlaceholder) return;
 
     if (fileType === "pdf") {
+      const binary = Uint8Array.from(atob(fileData.base64), (c) => c.charCodeAt(0));
       const loadingTask = pdfjsLib.getDocument({ data: binary.buffer });
 
       loadingTask.promise
@@ -596,26 +635,128 @@ async function fetchAndRenderSingleThumbnail(
             canvasContext: canvas.getContext("2d"),
             viewport: viewport,
           }).promise;
-          placeholder.innerHTML = "";
-          placeholder.appendChild(canvas);
+
+          // 💾 कैशे में सेव करो: कैनवास को Base64 इमेज (DataURL) में बदलकर रख लो
+          const finalDataUrl = canvas.toDataURL();
+          thumbnailCache[relativeFilePath] = { status: "success", dataUrl: finalDataUrl };
+
+          // यूआई पर रेंडर करो
+          const finalImg = document.createElement("img");
+          finalImg.src = finalDataUrl;
+          currentPlaceholder.innerHTML = "";
+          currentPlaceholder.appendChild(finalImg);
         })
         .catch((err) => {
           if (err.name === "PasswordException") {
             protectedFilesList[relativeFilePath] = true;
-            placeholder.innerHTML = `<div class="protected-badge">🔒 Protected</div>`;
+            // 💾 कैशे में रिकॉर्ड करो कि यह प्रोटेक्टेड है
+            thumbnailCache[relativeFilePath] = { status: "protected" };
+            currentPlaceholder.innerHTML = `<div class="protected-badge">🔒 Protected</div>`;
           } else {
-            placeholder.innerHTML = `<span style="font-size:11px;color:#888">Load Error</span>`;
+            // 💾 कैशे में रिकॉर्ड करो कि यह करप्टेड या एरर वाली फाइल है
+            thumbnailCache[relativeFilePath] = { status: "error" };
+            currentPlaceholder.innerHTML = `<span style="font-size:11px;color:#888">Load Error</span>`;
           }
         });
     } else {
+      // 🖼️ इमेज फाइल के लिए लॉजिक
+      const srcDataUrl = `data:image/jpeg;base64,${fileData.base64}`;
+      
+      // 💾 इमेज को भी सीधे कैशे में डाल दो ताकि दोबारा फेच न करना पड़े
+      thumbnailCache[relativeFilePath] = { status: "success", dataUrl: srcDataUrl };
+
       const img = document.createElement("img");
-      img.src = `data:image/jpeg;base64,${fileData.base64}`;
+      img.src = srcDataUrl;
       img.onload = () => {
-        placeholder.innerHTML = "";
-        placeholder.appendChild(img);
+        currentPlaceholder.innerHTML = "";
+        currentPlaceholder.appendChild(img);
       };
     }
   } catch (e) {
     if (e.name !== "AbortError") console.error(e);
   }
+}
+
+// ==========================================
+// 🔠 Windows Start Menu Style A-Z Filter
+// ==========================================
+function toggleAZGrid() {
+    const grid = document.getElementById('az-popup-grid');
+    if (!grid) return;
+    grid.classList.toggle('hidden');
+    if (!grid.classList.contains('hidden')) {
+        generateAZGrid();
+    }
+}
+
+// ========================================================================
+// 🖱️ Click Outside to Close: बाहर क्लिक करने पर A-Z पॉपअप बंद करना
+// ========================================================================
+document.addEventListener("click", function (event) {
+    const azWrapper = document.querySelector(".az-filter-wrapper");
+    const azPopup = document.getElementById("az-popup-grid");
+    
+    // अगर पॉपअप खुला हुआ है और क्लिक उस बटन या ग्रिड के बाहर हुआ है
+    if (azPopup && !azPopup.classList.contains("hidden") && azWrapper) {
+        if (!azWrapper.contains(event.target)) {
+            azPopup.classList.add("hidden"); // पॉपअप छुपा दें
+        }
+    }
+});
+
+function generateAZGrid() {
+    const grid = document.getElementById('az-popup-grid');
+    if (!grid) return;
+    grid.innerHTML = ""; 
+
+    const alphabet = "#ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+    const itemsToScan = window.currentDirectoryItemsRaw || globalVaultTree;
+    
+    // वर्तमान एक्टिव फ़ोल्डर के डेटा से शुरुआती अक्षरों का सेट बनाएं
+    const existingInitials = new Set(
+        itemsToScan.map(item => (item.name || "").trim().charAt(0).toUpperCase())
+    );
+
+    alphabet.forEach(letter => {
+        const span = document.createElement('span');
+        span.textContent = letter;
+        span.className = 'az-letter';
+
+        // चेक करें कि क्या इस अक्षर से कोई आइटम सच में है?
+        const isAvailable = (letter === '#') 
+            ? itemsToScan.some(item => /[^A-Z]/i.test((item.name || "").trim().charAt(0)))
+            : existingInitials.has(letter);
+
+        if (isAvailable) {
+            span.onclick = () => {
+                filterByLetter(letter);
+                toggleAZGrid(); 
+            };
+        } else {
+            span.classList.add('disabled'); // विंडोज़ की तरह डिसेबल (ग्रे) लुक
+        }
+        grid.appendChild(span);
+    });
+}
+
+function filterByLetter(letter) {
+    const itemsToFilter = window.currentDirectoryItemsRaw || globalVaultTree;
+    let filtered = [];
+
+    if (letter === '#') {
+        filtered = itemsToFilter.filter(item => /[^A-Z]/i.test((item.name || "").trim().charAt(0)));
+    } else {
+        filtered = itemsToFilter.filter(item => (item.name || "").trim().toUpperCase().startsWith(letter));
+    }
+
+    // आपके लेज़ी लोडर इंजन को चकमा देने के लिए 'lazyFilteredItems' को बाईपास करें
+    lazyFilteredItems = filtered;
+    
+    // ग्रिड साफ़ करके सिर्फ फ़िल्टर्ड डेटा रेंडर करने के लिए इंजन को ट्रिगर करें
+    const grid = document.getElementById("main-explorer-grid") || document.getElementById("category-view-pane");
+    if (grid) grid.innerHTML = "";
+    lazyCurrentIndex = 0;
+    
+    // appendMode = true देकर रेंडर मार दें ताकि सॉर्टिंग दोबारा न चले
+    renderCurrentFolderLevel(true); 
 }
