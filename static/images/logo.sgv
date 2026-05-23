@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 120" width="220" height="55"
+    style="background: transparent;">
+    <g id="logo-icon">
+        <path
+            d="M30,35 C30,22 75,15 75,15 C75,15 120,22 120,35 C120,75 75,105 75,105 C75,105 30,75 30,35 Z"
+            fill="none" stroke="#1a73e8" stroke-width="6" stroke-linecap="round"
+            stroke-linejoin="round" />
+
+        <path
+            d="M52,55 C48,55 45,52 45,48 C45,40 52,34 60,34 C63,26 72,22 80,22 C92,22 101,30 103,40 C109,40 114,45 114,51 C114,57 109,62 103,62 L55,62"
+            fill="#00af91" opacity="0.85" />
+
+        <rect x="52" y="58" width="46" height="28" rx="4" fill="#1a73e8" />
+        <line x1="60" y1="72" x2="90" y2="72" stroke="#ffffff" stroke-width="3"
+            stroke-linecap="round" />
+        <line x1="60" y1="78" x2="80" y2="78" stroke="#ffffff" stroke-width="3"
+            stroke-linecap="round" />
+        <path d="M62,86 L88,86 L84,98 L66,98 Z" fill="#ffffff" stroke="#1a73e8" stroke-width="2" />
+        <line x1="68" y1="92" x2="82" y2="92" stroke="#1a73e8" stroke-width="1.5" />
+    </g>
+
+    <g id="logo-text" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
+        <text x="145" y="58" font-size="38" font-weight="800" fill="#1a73e8" letter-spacing="1">
+            PRINTSAFE</text>
+
+        <text x="145" y="94" font-size="28" font-weight="400" fill="#00af91" letter-spacing="4">
+            CLOUD</text>
+
+        <path d="M265,88 L295,88 L290,83 M295,88 L290,93" fill="none" stroke="#00af91"
+            stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+    </g>
+</svg>
