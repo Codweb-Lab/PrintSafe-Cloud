@@ -106,11 +106,13 @@ def verify_private_scan(session_id):
         qr_sessions[session_id] = {"status": "authenticated"}
         return jsonify({"success": True, "message": "Authenticated by Mobile"}), 200
 
-    # When the desktop (or laptop) sends a GET request every 2 seconds to check the status:
+    # When the desktop (or laptop) sends a GET request every 2/3 seconds to check the status:
     if qr_sessions[session_id].get("status") == "authenticated":
         return jsonify({"success": True, "status": "authenticated"}), 200
         
-    return jsonify({"success": False, "status": "pending"}), 200
+    # 🎯 Returns success: False if status is 'pending' or 'terminated', forcing desktop layout lock
+    return jsonify({"success": False, "status": qr_sessions[session_id].get("status")}), 200
+    
 
 @app.route('/')
 def index():
@@ -220,6 +222,29 @@ def fetch_file_data():
         return jsonify({"base64": encoded_string})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# 🎯 FIX: Remote termination route to invalidate active desktop linked sessions
+@app.route('/terminate-desktop-session', methods=['POST'])
+def terminate_desktop_session():
+    try:
+        data = request.get_json() or {}
+        session_id = data.get('session_id')
+        
+        if not session_id:
+            return jsonify({"success": False, "error": "Missing session identifier token"}), 400
+            
+        # Intercept and mutate the active session memory layout state
+        if session_id in qr_sessions:
+            # Overwriting the status drops the success state inside the desktop's polling interval
+            qr_sessions[session_id] = {"status": "terminated"}
+            print(f"Success: Remote kill command executed securely for session: {session_id}")
+            return jsonify({"success": True, "message": "Session terminated cleanly"}), 200
+        else:
+            return jsonify({"success": False, "error": "Session token registry mismatch"}), 404
+            
+    except Exception as e:
+        print(f"Critical failure inside termination route engine: {str(e)}")
+        return jsonify({"success": False, "error": "Internal infrastructure crash"}), 500
 
 if __name__ == '__main__':
     # app.run(debug=True)

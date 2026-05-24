@@ -33,14 +33,13 @@ function formatFileSize(bytes) {
 }
 
 // Live Stream Side Preview (Now supports the full file path)
-async function showIntegratedPreview(
-  filename,
-  type,
-  cardElement,
-  filePassword = "",
-) {
+async function showIntegratedPreview(filename, type, cardElement, filePassword = "") {
   activeThumbnailRequests.forEach((controller) => controller.abort());
   activeThumbnailRequests = [];
+
+  // 🎯 FIX 5: Activate outer column container workspace expansion smoothly
+  const colWrapper = document.querySelector(".integrated-preview-column");
+  if (colWrapper) colWrapper.classList.add("active-pane");
 
   const previewPane = document.getElementById("integrated-preview-pane");
   const titleDisplay = document.getElementById("preview-filename-display");
@@ -48,32 +47,23 @@ async function showIntegratedPreview(
   const printBtn = document.getElementById("print-action-btn");
   const printerSelect = document.getElementById("printer-select-area");
 
-  document
-    .querySelectorAll(".file-card")
-    .forEach((c) => c.classList.remove("active"));
+  if (!previewPane || !pagesArea) return;
+
+  document.querySelectorAll(".file-card").forEach((c) => c.classList.remove("active"));
   cardElement.classList.add("active");
 
-  previewPane.style.display = "flex";
-  printBtn.style.display = "block";
-  printerSelect.style.display = "block";
-
-  // Show only the last name for display, but keep the full path for backend requests
-  titleDisplay.innerText = filename.split("/").pop();
+  if (printBtn) printBtn.style.display = "block";
+  if (printerSelect) printerSelect.style.display = "block";
+  if (titleDisplay) titleDisplay.innerText = filename.split("/").pop();
 
   decryptedCanvasCache = [];
-
-  pagesArea.innerHTML = `
-                <div class="stream-loader">
-                    <span style="color:#1a73e8; font-weight:600; font-size:13px;">⚡ Streaming secure bytes from server...</span>
-                    <div class="progress-line"></div>
-                </div>
-            `;
+  pagesArea.innerHTML = `<div class="stream-loader" style="padding:20px;text-align:center;font-size:13px;color:#1a73e8;"><span>⚡ Streaming secure bytes...</span></div>`;
 
   try {
     const response = await fetch("/fetch-file-data", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: savedPassword, filename: filename, session_id: currentSessionId }), // Send the full path
+      body: JSON.stringify({ password: savedPassword, filename: filename, session_id: currentSessionId }),
     });
 
     if (!response.ok) throw new Error("Stream connection failed.");
@@ -82,64 +72,38 @@ async function showIntegratedPreview(
     activeFile.name = filename;
     activeFile.type = type;
     activeFile.base64 = fileData.base64;
-    activeFile.binary = Uint8Array.from(atob(fileData.base64), (c) =>
-      c.charCodeAt(0),
-    );
+    activeFile.binary = Uint8Array.from(atob(fileData.base64), (c) => c.charCodeAt(0));
 
     if (type === "pdf") {
-      const loadingTask = pdfjsLib.getDocument({
-        data: activeFile.binary.buffer.slice(0),
-        password: filePassword,
-      });
-
-      loadingTask.promise
-        .then(async (pdf) => {
+      const loadingTask = pdfjsLib.getDocument({ data: activeFile.binary.buffer.slice(0), password: filePassword });
+      loadingTask.promise.then(async (pdf) => {
           pagesArea.innerHTML = "";
-
           for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
             const page = await pdf.getPage(pageNum);
-
             const canvas = document.createElement("canvas");
             canvas.className = "raster-page-preview";
-            const viewport = page.getViewport({ scale: 1.3 });
-            canvas.height = viewport.height;
-            canvas.width = viewport.width;
-            await page.render({
-              canvasContext: canvas.getContext("2d"),
-              viewport: viewport,
-            }).promise;
+            const viewport = page.getViewport({ scale: 1.2 });
+            canvas.height = viewport.height; canvas.width = viewport.width;
+            
+            await page.render({ canvasContext: canvas.getContext("2d"), viewport: viewport }).promise;
             pagesArea.appendChild(canvas);
 
             const printCanvas = document.createElement("canvas");
-            const printContext = printCanvas.getContext("2d");
-            const printViewport = page.getViewport({ scale: 3.0 });
-            printCanvas.height = printViewport.height;
-            printCanvas.width = printViewport.width;
-
-            await page.render({
-              canvasContext: printContext,
-              viewport: printViewport,
-            }).promise;
+            const printViewport = page.getViewport({ scale: 2.5 });
+            printCanvas.height = printViewport.height; printCanvas.width = printViewport.width;
+            await page.render({ canvasContext: printCanvas.getContext("2d"), viewport: printViewport }).promise;
             decryptedCanvasCache.push(printCanvas);
           }
-        })
-        .catch((err) => {
+      }).catch((err) => {
           if (err.name === "PasswordException") {
             protectedFilesList[filename] = true;
-
-            pagesArea.innerHTML = `
-                                <div class="file-lock-form">
-                                    <div style="font-size:30px; margin-bottom:10px;">🔒</div>
-                                    <span style="font-size:13px; font-weight:600; color:#3c4043;">This file is password protected</span>
-                                    <input type="password" id="file-inner-pass" placeholder="Enter File Password" onkeydown="if(event.key==='Enter') submitFilePassword('${filename}', cardElement)">
-                                    <button class="btn" style="padding:8px; font-size:12px;" onclick="submitFilePassword('${filename}', this.parentElement)">Decrypt & View</button>
-                                </div>
-                            `;
+            pagesArea.innerHTML = `<div class="file-lock-form" style="padding:20px;">
+                                    <input type="password" id="file-inner-pass" placeholder="Enter File Password" style="width:100%;padding:8px;margin-bottom:8px;">
+                                    <button class="btn primary-submit-btn" onclick="submitFilePassword('${filename}', this)">Decrypt</button>
+                                   </div>`;
             pagesArea.querySelector(".file-lock-form").cardRef = cardElement;
-          } else {
-            pagesArea.innerHTML = `<p style='color:red;'>Render Error: ${err.message}</p>`;
           }
-        });
+      });
     } else {
       pagesArea.innerHTML = "";
       const img = document.createElement("img");
@@ -148,8 +112,18 @@ async function showIntegratedPreview(
       pagesArea.appendChild(img);
     }
   } catch (error) {
-    pagesArea.innerHTML = `<p style='color:red; padding:20px;'>Render Error: ${error.message}</p>`;
+    pagesArea.innerHTML = `<p style='color:red; padding:10px;'>Error: ${error.message}</p>`;
   }
+}
+
+function closePreviewPane() {
+  // 🎯 FIX 5: Completely shrink and reset right side column width to restore folder grid scale
+  const colWrapper = document.querySelector(".integrated-preview-column");
+  if (colWrapper) colWrapper.classList.remove("active-pane");
+  
+  document.querySelectorAll(".file-card").forEach((c) => c.classList.remove("active"));
+  activeFile = { name: null, type: null, base64: null, binary: null };
+  decryptedCanvasCache = [];
 }
 
 
@@ -251,18 +225,6 @@ function triggerCleanVectorPrint() {
   }
 }
 
-function closePreviewPane() {
-  document.getElementById("integrated-preview-pane").style.display = "none";
-  document
-    .getElementById("integrated-preview-pane")
-    .classList.remove("fullscreen-pane"); // Reset fullscreen
-  document
-    .querySelectorAll(".file-card")
-    .forEach((c) => c.classList.remove("active"));
-  activeFile = { name: null, type: null, base64: null, binary: null };
-  decryptedCanvasCache = [];
-}
-
 // Secret Key Manual Login (with client-side validation)
 async function unlockVault() {
   const passwordInput = document.getElementById("secret-key");
@@ -279,7 +241,7 @@ async function unlockVault() {
   // Rule 1: Is input empty?
   if (password === "") {
     showToast("Please enter your secret key.", "error");
-    passwordInput.focus();
+    // passwordInput.focus();
     return;
   }
 
@@ -308,6 +270,16 @@ async function unlockVault() {
     globalVaultTree = data.tree;
     currentFolderNavigation = [];
     renderCurrentFolderLevel();
+
+    // DIRECT UI SWAP: Hide auth, show profile menu, show responsive dashboard
+    const profileTrigger = document.querySelector(".profile-dropdown-wrapper");
+    if (profileTrigger) profileTrigger.style.display = "block";
+
+    // Trigger mobile scanner feature check upon manual authorization
+    initializeMobileScannerFeatures();
+
+    //FIX: Start the background session lifecycle observer on the desktop app instance
+    startDesktopActiveSessionMonitor();
   } catch (error) {
     showToast("Error: " + error.message, "error");
   }
@@ -858,7 +830,11 @@ async function checkQRAuthenticationStatus() {
         // When the mobile scan is 100% successful:
         if (data.success) {
             stopQRPolling(); // Stop the polling loop immediately
-            qrPollingInterval = null;
+            if (qrPollingInterval) {
+                clearInterval(qrPollingInterval);
+                qrPollingInterval = null;
+            }
+            console.log("Authentication successful! Stopped QR Polling permanently.");
             
             const qrDisplay = document.getElementById('qr-code-display');
             // const statusText = document.getElementById('qr-status-text');
@@ -905,6 +881,18 @@ async function checkQRAuthenticationStatus() {
                 currentFolderNavigation = []; 
                 renderCurrentFolderLevel();
                 showToast("Welcome!", "success");
+
+                // Trigger mobile scanner feature check upon QR authorization
+                initializeMobileScannerFeatures();
+
+                // 🎯 GLOBAL MEMORY LOCK: Explicitly preserve the active token in memory before firing the monitor loop
+                // Without this line, currentSessionId becomes undefined after layout transitions!
+                if (!currentSessionId && data.session_id) {
+                    currentSessionId = data.session_id;
+                }
+
+                // 🎯 FIX: Explicitly pass the active token directly into the monitor to eliminate global variable race conditions
+                startDesktopActiveSessionMonitor(currentSessionId);
             }, 1500);
         }
     } catch (e) { 
@@ -913,23 +901,169 @@ async function checkQRAuthenticationStatus() {
 }
 
 // ========================================================================
+// 👤 Profile Dropdown Menu Toggle Engine
+// ========================================================================
+function toggleProfileDropdown() {
+    const dropdown = document.getElementById("profile-menu-dropdown");
+    if (!dropdown) return;
+    
+    if (dropdown.style.display === "none" || dropdown.style.display === "") {
+        dropdown.style.display = "flex";
+    } else {
+        dropdown.style.display = "none";
+    }
+}
+
+// Close profile dropdown cleanly if user clicks anywhere outside the trigger zone
+document.addEventListener("click", function (event) {
+    const dropdown = document.getElementById("profile-menu-dropdown");
+    const avatar = document.querySelector(".profile-avatar-trigger");
+    
+    if (dropdown && dropdown.style.display === "flex" && avatar) {
+        if (!avatar.contains(event.target) && !dropdown.contains(event.target)) {
+            dropdown.style.display = "none";
+        }
+    }
+});
+
+// ========================================================================
+// 📱 WhatsApp Web Style: Dashboard Mobile Scanner Engine
+// ========================================================================
+let dashboardHtml5QrCode = null;
+
+// Check device environment and conditionally expose desktop linker features
+// Mobile Device Optimization & Desktop Linker Feature Trigger
+function initializeMobileScannerFeatures() {
+    const mobileLinkBtn = document.getElementById("mobile-scan-trigger-btn");
+    const mobileDisconnectBtn = document.getElementById("mobile-disconnect-desktop-btn");
+    if (!mobileLinkBtn) return;
+
+    // 🎯 FIX: Robust checking for mobile layout using window width and user agent
+    const isMobileLayout = window.innerWidth <= 900 || /Mobi|Android|iPhone/i.test(navigator.userAgent);
+
+    if (isMobileLayout) {
+        // Force fully visible display override for mobile users inside the profile menu dropdown
+        mobileLinkBtn.style.setProperty('display', 'block', 'important');
+        console.log("Mobile viewport recognized: Desktop Linking Module Activated.");
+
+        // 🎯 FIX: Expose the disconnect action trigger explicitly for verified smartphone environments
+        if (mobileDisconnectBtn) mobileDisconnectBtn.style.setProperty('display', 'block', 'important');
+
+        // Target and remove the secondary QR toggle action elements strictly for native security viewports
+        const authContainer = document.getElementById("auth-container");
+        if (authContainer) {
+            // Locate the "Scan QR Instead" button on the front side card
+            const qrToggleBtn = authContainer.querySelector(".auth-card-front .secondary-btn");
+            // Locate the descriptive text separator node
+            const textDivider = authContainer.querySelector(".auth-card-front .auth-divider-text");
+
+            if (qrToggleBtn) qrToggleBtn.remove(); // Safely purge the element from DOM
+            if (textDivider) textDivider.remove(); // Safely purge the element from DOM
+            console.log("Mobile context verified dynamically via JS: Purged unused QR gateway button vectors.");
+        }
+    } else {
+        // Keep hidden on actual native desktop monitors
+        mobileLinkBtn.style.setProperty('display', 'none', 'important');
+        if (mobileDisconnectBtn) mobileDisconnectBtn.style.setProperty('display', 'none', 'important');
+    }
+}
+function _initializeMobileScannerFeatures() {
+    const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
+    if (isMobileDevice) {
+        const scanBtn = document.getElementById("mobile-scan-trigger-btn");
+        if (scanBtn) {
+            scanBtn.style.display = "flex"; // Show link option inside dropdown if on mobile
+        }
+    }
+}
+
+// 1. Open Modal Popup and initialize camera streams from dropdown menu trigger
+function openMobileScannerFromDashboard() {
+    const dropdown = document.getElementById("profile-menu-dropdown");
+    if (dropdown) dropdown.style.display = "none"; // Close dropdown first
+
+    const modal = document.getElementById('mobile-dashboard-scanner-modal');
+    const statusText = document.getElementById('mobile-dashboard-scanned-status');
+    if (!modal) return;
+
+    modal.style.display = 'flex';
+    if (statusText) statusText.innerText = "Requesting camera permission...";
+
+    dashboardHtml5QrCode = new Html5Qrcode("mobile-dashboard-reader");
+    const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+    dashboardHtml5QrCode.start({ facingMode: "environment" }, config, onDashboardScanSuccess)
+    .then(() => {
+        if (statusText) statusText.innerText = "Ready to scan desktop QR code...";
+    })
+    .catch(err => {
+        if (statusText) statusText.innerHTML = "<span style='color:red;'>Camera access denied!</span>";
+    });
+}
+
+// 2. Close scanner modal popup dialog and terminate streaming video tracks cleanly
+function closeMobileScannerFromDashboard() {
+    const modal = document.getElementById('mobile-dashboard-scanner-modal');
+    if (dashboardHtml5QrCode && dashboardHtml5QrCode.isScanning) {
+        dashboardHtml5QrCode.stop().then(() => {
+            if (modal) modal.style.display = 'none';
+        });
+    } else {
+        if (modal) modal.style.display = 'none';
+    }
+}
+
+// 3. Callback execution upon tracking valid QR identity token from desktop
+async function onDashboardScanSuccess(decodedText, decodedResult) {
+    const statusText = document.getElementById('mobile-dashboard-scanned-status');
+    if (statusText) statusText.innerText = "Authenticating desktop session...";
+    
+    await dashboardHtml5QrCode.stop();
+
+    try {
+        const res = await fetch('/verify-private-scan/' + decodedText, { method: 'POST' });
+        if (res.ok) {
+            // FIX: Store the scanned token string into the mobile's currentSessionId memory pool
+            currentSessionId = decodedText; 
+            console.log("Mobile paired successfully with Desktop Session ID:", currentSessionId);
+            if (statusText) statusText.innerHTML = "<span style='color:green;'>Desktop authorization successful!</span>";
+            showToast("Desktop authenticated successfully!", "success");
+            
+            setTimeout(() => { 
+                document.getElementById('mobile-dashboard-scanner-modal').style.display = 'none'; 
+            }, 1200);
+        } else {
+            if (statusText) statusText.innerHTML = "<span style='color:red;'>Invalid or expired QR token!</span>";
+            showToast("Authentication failed: Invalid QR token", "error");
+        }
+    } catch (e) {
+        if (statusText) statusText.innerText = "Network transmission error!";
+        console.error(e);
+    }
+}
+
+// ========================================================================
 // DOM Ready Hook: Always live polling without any mouse hassle
 // ========================================================================
 document.addEventListener("DOMContentLoaded", () => {
     if (document.getElementById('auth-container')) {
-        // 1. Immediately generate QR code as soon as the page loads
-        generateNewQR();
+        
+        initializeMobileScannerFeatures();
         
         // 2. Without the fuss of mouse interactions, immediately start the polling loop
         // after 2 seconds so that it continuously queries the backend to check whether
         // the mobile device has scanned.
-        setTimeout(() => {
-            if (qrPollingInterval) clearInterval(qrPollingInterval);
-            qrPollingInterval = setInterval(checkQRAuthenticationStatus, 2000);
-            console.log("▶️ Continuous QR Polling Started...");
-        }, 1000);
+        // 🎯 FIX: Clear the automatic instant call of generateNewQR from here to block bootup network flood
+    // Only configure responsive device assets on load
+    try {
+        initializeMobileScannerFeatures();
+    } catch (mobileOptimizationError) {
+        console.error("Non-blocking error during mobile layout optimization loop:", mobileOptimizationError);
+    }
     }
 });
+
 
 // ========================================================================
 // 🔄 Card Rotation Toggle Engine
@@ -940,107 +1074,115 @@ function rotateCard(shouldFlip) {
     
     if (shouldFlip) {
         cardInner.classList.add('flipped');
+        // 🎯 FIX: Lazy load the session QR token and activate polling loops ONLY upon explicit button tap action
+        generateNewQR().then(() => {
+            startQRPolling();
+        });
     } else {
         cardInner.classList.remove('flipped');
+        stopQRPolling();
     }
 }
 
-// Premium and Modern HTML Toast Alert Engine
+// Premium HTML glassmorphic toast notification engine (Bottom-Center Aligned)
 function showToast(message, type = "error") {
     const container = document.getElementById("custom-toast-container");
     if (!container) return;
 
-    // एक नया टोस्ट रैपर बनाएं
     const toast = document.createElement("div");
-    toast.style.marginBottom = "12px";
+    toast.style.width = "100%";
+    toast.style.padding = "0 20px"; // Adds standard edge safety padding for small mobile wraps
+    toast.style.pointerEvents = "auto"; // Restores click events specifically for the individual toast element
 
-    // थिमिंग कॉन्फ़िगरेशन (Success बनाम Error)
     const isSuccess = type === "success";
-    const borderColor = isSuccess ? "#10b981" : "#ef4444"; // हरा vs लाल
-    const bgColor = isSuccess ? "rgba(240, 253, 250, 0.95)" : "rgba(254, 242, 242, 0.95)"; // हल्का बैकग्राउंड
-    const textColor = isSuccess ? "#065f46" : "#991b1b"; // गहरा टेक्स्ट कलर
+    const borderColor = isSuccess ? "#10b981" : "#ef4444";
+    const bgColor = isSuccess ? "rgba(240, 253, 250, 0.95)" : "rgba(254, 242, 242, 0.95)";
+    const textColor = isSuccess ? "#065f46" : "#991b1b";
 
-    // सुंदर SVG आइकन्स (Material Design Style)
-    const successIcon = `
-        <svg style="width:20px; height:20px; color:#10b981;" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-        </svg>`;
-        
-    const errorIcon = `
-        <svg style="width:20px; height:20px; color:#ef4444;" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-        </svg>`;
+    const currentIcon = isSuccess 
+        ? `<svg style="width:20px; height:20px; color:#10b981; flex-shrink:0;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`
+        : `<svg style="width:20px; height:20px; color:#ef4444; flex-shrink:0;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
 
-    const currentIcon = isSuccess ? successIcon : errorIcon;
-
-    // टोस्ट की अंदरूनी संरचना और इन-लाइन CSS मैजिक
+    // 🎯 ANIMATION FIX: Initial state starts down below the boundary screen frame (translateY)
     toast.innerHTML = `
-        <div class="modern-toast-box" style="
-            background: ${bgColor}; 
-            color: ${textColor}; 
-            border-left: 5px solid ${borderColor}; 
-            padding: 14px 20px; 
-            border-radius: 8px; 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            font-size: 14px; 
-            font-weight: 550; 
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1); 
-            display: flex; 
-            align-items: center; 
-            gap: 12px; 
-            min-width: 300px; 
-            max-width: 450px;
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            transform: translateX(130%); 
-            transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-            position: relative;
-            pointer-events: auto;
-        ">
-            <div style="display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                ${currentIcon}
-            </div>
-            
-            <div style="flex: 1; line-height: 1.4; padding-right: 15px;">
-                ${message}
-            </div>
-            
-            <button class="toast-close-btn" style="
-                background: none; 
-                border: none; 
-                color: ${textColor}; 
-                opacity: 0.5; 
-                cursor: pointer; 
-                font-size: 18px; 
-                font-weight: bold;
-                position: absolute;
-                top: 50%;
-                right: 10px;
-                transform: translateY(-50%);
-                padding: 0 5px;
-                line-height: 1;
-                transition: opacity 0.2s;
-            " onmouseenter="this.style.opacity=1" onmouseleave="this.style.opacity=0.5" onclick="this.parentElement.parentElement.remove()">
-                &times;
-            </button>
+        <div class="modern-toast-box" style="background:${bgColor}; color:${textColor}; border-left:5px solid ${borderColor}; padding:14px 20px; border-radius:8px; display:flex; align-items:center; gap:12px; width:100%; max-width:360px; margin:0 auto; box-shadow:0 10px 25px rgba(0,0,0,0.1); backdrop-filter:blur(8px); transform:translateY(150%); transition:transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); position:relative;">
+            <div>${currentIcon}</div>
+            <div style="flex:1; line-height:1.4; text-align:left; font-size:13px;">${message}</div>
+            <button style="background:none; border:none; color:${textColor}; font-weight:bold; cursor:pointer; font-size:16px; padding:0 0 0 4px;" onclick="this.parentElement.parentElement.remove()">&times;</button>
         </div>
     `;
-
     container.appendChild(toast);
-
-    // A small reflex delay for the slide-in animation
-    setTimeout(() => {
-        const box = toast.querySelector(".modern-toast-box");
-        if (box) box.style.transform = "translateX(0)";
+    
+    // Smoothly lift up the active toast box slice context view
+    setTimeout(() => { 
+        const box = toast.querySelector(".modern-toast-box"); 
+        if (box) box.style.transform = "translateY(0)"; 
     }, 50);
-
-    // Automatic logic to smoothly slide out after 4.5 seconds.
-    setTimeout(() => {
-        const box = toast.querySelector(".modern-toast-box");
-        if (box) {
-            box.style.transform = "translateX(130%)";
-            box.style.opacity = "0";
-            setTimeout(() => { toast.remove(); }, 400);
-        }
+    
+    // Slide down and dismiss the element frame context once timer expires safely
+    setTimeout(() => { 
+        const box = toast.querySelector(".modern-toast-box"); 
+        if (box) { 
+            box.style.transform = "translateY(150%)"; 
+            setTimeout(() => { toast.remove(); }, 400); 
+        } 
     }, 4500);
+}
+
+// 🎯 FIX: Remote Desktop session execution termination transmitter (Triggers from Mobile App)
+async function remoteKillDesktopSession() {
+    // Collect the dynamic active link session identifier string from storage or memory
+    if (!currentSessionId) {
+        showToast("No active linked desktop session detected.", "error");
+        return;
+    }
+    
+    if (!confirm("Are you sure you want to disconnect and lock the linked desktop session?")) return;
+
+    try {
+        // Post a termination request payload directly to the backend stream checkpoint
+        const response = await fetch('/terminate-desktop-session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: currentSessionId })
+        });
+
+        if (response.ok) {
+            showToast("Desktop session locked successfully.", "success");
+            const dropdown = document.getElementById("profile-menu-dropdown");
+            if (dropdown) dropdown.style.display = "none";
+        } else {
+            showToast("Failed to transmit disconnect sequence.", "error");
+        }
+    } catch (error) {
+        console.error("Transmission break during remote kill request:", error);
+    }
+}
+
+// 🎯 FIX: Continuous background tracker to listen for remote kill commands (Runs on Desktop after login)
+function startDesktopActiveSessionMonitor() {
+    if (!currentSessionId) return;
+    
+    const sessionTrackerLoop = setInterval(async () => {
+        try {
+            // Poll the backend validation checkpoint to see if this unique instance is still authorized
+            const response = await fetch('/verify-private-scan/' + currentSessionId);
+            if (!response.ok) return;
+            const data = await response.json();
+            
+            // If the backend drops the success state or flags a termination request token
+            if (!data.success) {
+                clearInterval(sessionTrackerLoop); // Kill the background loop observer immediately
+                console.log("Remote termination signal intercepted. Enforcing instance hard lock.");
+                
+                // Force state reset and send user context back to the cryptographic gateway screen
+                showToast("Session disconnected via remote device controller.", "error");
+                setTimeout(() => {
+                    location.reload(); // Instantly purges cache memory and restores default lock screen
+                }, 1500);
+            }
+        } catch (e) {
+            console.error("Silent error during active session tracking loop:", e);
+        }
+    }, 3000); // Poll every 3 seconds silently in the background
 }
