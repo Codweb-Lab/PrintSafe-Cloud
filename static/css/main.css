@@ -16,40 +16,203 @@ header h1 {
   color: #1a73e8;
 }
 
-/* Lock Screen */
-#auth-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 80vh;
+/* --- 🔄 Premium Normal (Light) Theme Flip Card --- */
+.auth-container {
+    background: transparent !important;
+    perspective: 1000px;
+    width: 380px;
+    height: 460px;
+    margin: 60px auto;
 }
-.auth-card {
-  background: white;
-  padding: 40px;
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-  width: 320px;
-  text-align: center;
+.auth-card { background: white; padding: 40px; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); width: 320px; text-align: center; }
+.auth-card input[type="password"] { width: 100%; padding: 12px; margin: 15px 0; border: 1px solid #dadce0; border-radius: 4px; box-sizing: border-box; font-size: 16px; }
+.btn { background: #1a73e8; color: white; border: none; padding: 12px 24px; font-weight: 600; border-radius: 4px; cursor: pointer; font-size: 14px; width: fit-content; }
+.flip-card-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    text-align: center;
+    transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    transform-style: preserve-3d;
 }
-.auth-card input[type="password"] {
+
+.flip-card-inner.flipped {
+    transform: rotateY(180deg);
+}
+
+.auth-card-front, .auth-card-back {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 35px 30px;
+    
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08), 0 2px 5px rgba(0, 0, 0, 0.04);
+    display: block;
+    flex-direction: column;
+    justify-content: space-between;
+    box-sizing: border-box;
+    font-family: 'Segoe UI', Arial, sans-serif;
+}
+
+.auth-card-front h2, .auth-card-back h2 {
+    color: #202124;
+    font-size: 24px;
+    margin-bottom: 5px;
+    font-weight: 600;
+}
+
+.auth-card-front p, .auth-card-back p {
+    color: #5f6368;
+}
+
+.auth-card-back {
+    transform: rotateY(180deg);
+    background-color: #f8f9fa;
+}
+
+.qr-box-wrapper {
+    width: 190px;
+    height: 190px;
+    margin: 10px auto;
+    background: #ffffff;
+    border: 1px solid #dadce0;
+    border-radius: 8px;
+    padding: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.qr-box-wrapper img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.flip-trigger-zone p {
+    font-size: 12px;
+    color: #70757a;
+    margin: 10px;
+}
+
+/* normal secondary button */
+.secondary-btn {
+    background: #f1f3f4;
+    color: #3c4043;
+    border: 1px solid #dadce0;
+    padding: 10px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 6px;
+    width: fit-content;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.secondary-btn:hover {
+    background: #e8eaed;
+    color: #202124;
+}
+
+.qr-status-blink {
+    font-size: 12px;
+    color: #1a73e8;
+    font-weight: 600;
+    margin: 5px 0;
+}
+.auth-card-front .input-group {
+    width: 100%;
+    margin: 20px 0 15px 0;
+}
+
+.auth-card-front input[type="password"] {
   width: 100%;
   padding: 12px;
-  margin: 15px 0;
   border: 1px solid #dadce0;
-  border-radius: 4px;
   box-sizing: border-box;
   font-size: 16px;
+  outline: none;
 }
-.btn {
-  background: #1a73e8;
-  color: white;
-  border: none;
-  padding: 12px 24px;
-  font-weight: 600;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  width: 100%;
+.auth-card-front input[type="password"]:focus {
+    border-color: transparent;
+    box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.15);
+}
+
+.auth-card-front .login-btn {
+    width: 100%;
+    padding: 12px;
+    background-color: #1a73e8;
+    color: #ffffff;
+    font-size: 15px;
+    font-weight: 600;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.1s;
+    box-shadow: 0 2px 4px rgba(26, 115, 232, 0.2);
+}
+
+/* --- Premium Sliding Toggle Switch --- */
+.auth-mode-switcher-bar {
+    position: relative;
+    display: flex;
+    width: 100%;
+    background: #f1f5f9;
+    border-radius: 30px;
+    padding: 4px;
+    margin-top: 16px;
+    border: 1px solid #e2e8f0;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+/* Common styles for both tabs/buttons */
+.switch-tab {
+    position: relative;
+    flex: 1;
+    padding: 10px 0;
+    border: none;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 600;
+    color: #64748b;           /* inactive state color */
+    cursor: pointer;
+    z-index: 2;               /* to keep text above the slider */
+    transition: color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+/* (The Slider Pill) */
+.auth-mode-switcher-bar::before {
+    content: "";
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    width: calc(50% - 4px);
+    height: calc(100% - 8px);
+    background: #ffffff;
+    border-radius: 25px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 1;
+}
+
+.auth-mode-switcher-bar.qr-active::before {
+    transform: translateX(100%);
+}
+
+.switch-tab.active-tab {
+    color: #2563eb;
 }
 
 /* Dashboard Layout */
@@ -378,7 +541,7 @@ header h1 {
 }
 
 .explorer-divider {
-    grid-column: 1 / -1; /* ग्रिड की पूरी चौड़ाई घेरेगा */
+    grid-column: 1 / -1;
     height: 1px;
     background-color: #e9ecef;
     margin: 15px 0;
@@ -389,7 +552,7 @@ header h1 {
 #az-trigger-btn { padding: 6px 12px; background: #1a73e8; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
 
 .az-popup-grid {
-    position: absolute; top: 40px; left: 0; background: #222222; /* आपकी डार्क थीम के लिए */
+    position: absolute; top: 40px; left: 0; background: #222222;
     border: 1px solid #444; border-radius: 8px; padding: 12px;
     display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }

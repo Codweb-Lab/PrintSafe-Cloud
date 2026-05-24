@@ -1,4 +1,4 @@
-import os, base64
+import os, base64, uuid, io, qrcode
 from flask import Flask, render_template, request, jsonify
 from dotenv import load_dotenv
 
@@ -10,6 +10,108 @@ SECRET_PRINT_PASSWORD = os.getenv("SECRET_PRINT_PASSWORD")
 DOCUMENTS_DIR = os.getenv("DOCUMENTS_DIR")
 app = Flask(__name__)
 
+# In-memory database for tracking QR sessions
+# Structure: { "session_id_123": {"status": "pending", "password_verified": False} }
+qr_sessions = {}
+
+# 1.The QR code generated on the desktop will now contain only a plain Session ID—no direct link!
+@app.route('/generate-qr-session', methods=['GET'])
+def generate_qr_session():
+    session_id = str(uuid.uuid4())
+    qr_sessions[session_id] = {"status": "pending"}
+    
+    # Security: There is no URL inside the QR code—just plain `session_id` text!
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(session_id)
+    qr.make(fit=True)
+    
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffered = io.BytesIO()
+    img.save(buffered, format="PNG")
+    qr_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+    
+    return jsonify({
+        "session_id": session_id,
+        "qr_image": f"data:image/png;base64,{qr_base64}"
+    })
+
+# 2. Your Secret Master Scanner Link (Keep this open on your mobile phone)
+@app.route('/scan', methods=['GET'])
+def my_private_scanner():
+    # This page will open on a mobile device and directly activate the built-in camera.
+    return '''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>🔒 PrintSafe Private Scanner</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <script src="https://unpkg.com/html5-qrcode"></script>
+        <style>
+            body { font-family: sans-serif; text-align: center; background: #f1f5f9; padding: 20px; color: #1e293b; }
+            #reader { width: 100%; max-width: 400px; margin: 20px auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+            .status { font-weight: bold; color: #2563eb; margin-top: 15px; }
+        </style>
+    </head>
+    <body>
+        <h2>🔒 Master Scanner Active</h2>
+        <p>Scan the QR code displayed on the desktop.</p>
+        
+        <div id="reader"></div>
+        <div id="scanned-status" class="status">📷 Waiting for the camera to start....</div>
+
+        <script>
+            const html5QrCode = new Html5Qrcode("reader");
+            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+            // Logic for enabling the back camera
+            html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
+            .then(() => {
+                document.getElementById('scanned-status').innerText = "⏳ Ready to scan QR...";
+            })
+            .catch(err => {
+                document.getElementById('scanned-status').innerText = "❌ Camera access denied!";
+            });
+
+            async function onScanSuccess(decodedText, decodedResult) {
+                // As soon as the camera detects the QR code (Session ID):
+                document.getElementById('scanned-status').innerText = "Authenticating......";
+                html5QrCode.stop(); // Stop Camera
+
+                // Send an approval request to the server backend.
+                try {
+                    const res = await fetch('/verify-private-scan/' + decodedText, { method: 'POST' });
+                    if(res.ok) {
+                        document.getElementById('scanned-status').innerHTML = "<span style='color:green;'>✅ Desktop logged in!</span>";
+                    } else {
+                        document.getElementById('scanned-status').innerHTML = "<span style='color:red;'>❌ Invalid or expired QR!</span>";
+                    }
+                } catch(e) {
+                    document.getElementById('scanned-status').innerText = "❌ Network Error!";
+                }
+            }
+        </script>
+    </body>
+    </html>
+    '''
+
+# 3. The mobile will send a POST request to scan,
+# and the desktop will send a GET request to check the status.
+@app.route('/verify-private-scan/<session_id>', methods=['GET', 'POST'])
+def verify_private_scan(session_id):
+    if session_id not in qr_sessions:
+        return jsonify({"error": "Invalid Session"}), 404
+
+    # When the mobile master scanner scans and sends data:
+    if request.method == 'POST':
+        qr_sessions[session_id] = {"status": "authenticated"}
+        return jsonify({"success": True, "message": "Authenticated by Mobile"}), 200
+
+    # When the desktop (or laptop) sends a GET request every 2 seconds to check the status:
+    if qr_sessions[session_id].get("status") == "authenticated":
+        return jsonify({"success": True, "status": "authenticated"}), 200
+        
+    return jsonify({"success": False, "status": "pending"}), 200
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -19,8 +121,15 @@ def index():
 def fetch_vault_list():
     data = request.get_json() or {}
     password = data.get('password')
+    session_id = data.get('session_id') # The session ID sent from JavaScript will be captured here.
 
-    if password != SECRET_PRINT_PASSWORD:
+    # Magic Check: Either the manually entered password must be correct,
+    # or this QR session must have already been approved via mobile.
+    is_password_valid = (password == SECRET_PRINT_PASSWORD)
+    is_qr_valid = (session_id in qr_sessions and qr_sessions[session_id].get("status") == "authenticated")
+
+    # If either of the two is true, let them in; otherwise, throw a 403.
+    if not (is_password_valid or is_qr_valid):
         return jsonify({"error": "Unauthorized Access!"}), 403
 
     # An in-memory function that scans the entire directory structure.
@@ -62,20 +171,18 @@ def fetch_vault_list():
         return jsonify({"error": str(e)}), 500
 
 def get_windows_file_type(file_name, is_folder=False):
-    """बिना किसी हार्डकोडिंग के, फ़ाइल नेम से डायनेमिकली विंडोज़-स्टाइल टाइप बनाना"""
+    """Dynamically creating Windows-style types from filenames without any hardcoding."""
     if is_folder:
         return "File folder"
     
-    # फ़ाइल नेम से एक्सटेंशन अलग करें (जैसे: 'app.py' -> '.py')
     _, ext = os.path.splitext(file_name)
     
     if not ext:
         return "Unknown File"
         
-    # डॉट (.) को हटाएँ और पूरे एक्सटेंशन को अपरकेस (UPPERCASE) करें (जैसे: 'py' -> 'PY')
     clean_ext = ext.replace('.', '').upper()
     
-    # सीधा डायनेमिक नाम रिटर्न करें (जैसे: 'PY File', 'PDF File', 'PNG File')
+    # direct dynamic name return ('PY File', 'PDF File', 'PNG File')
     return f"{clean_ext} File"
 
 # 2. This endpoint will now find files inside sub-folders as well using their relative path
@@ -83,13 +190,19 @@ def get_windows_file_type(file_name, is_folder=False):
 def fetch_file_data():
     data = request.get_json() or {}
     password = data.get('password')
-    relative_path = data.get('filename') # This will now include the folder path as well (e.g., "Folder/Sub/file.pdf")
-
-    if password != SECRET_PRINT_PASSWORD:
-        return jsonify({"error": "Unauthorized Access!"}), 403
+    relative_path = data.get('filename') # This will now include the folder path as well
+    session_id = data.get('session_id') # QR session ID catch from js
 
     if not relative_path:
         return jsonify({"error": "File path is required!"}), 400
+
+    # Magic Security Check: Either the manual password must be correct,
+    # or this QR session must have already been authenticated via mobile.
+    is_password_valid = (password == SECRET_PRINT_PASSWORD)
+    is_qr_valid = (session_id in qr_sessions and qr_sessions[session_id].get("status") == "authenticated")
+
+    if not (is_password_valid or is_qr_valid):
+        return jsonify({"error": "Unauthorized Access!"}), 403
 
     # Security Fix: Securely combine paths to prevent directory traversal attacks
     secure_path = os.path.normpath(os.path.join(DOCUMENTS_DIR, relative_path))
@@ -109,4 +222,5 @@ def fetch_file_data():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    # app.run(debug=True)
+    app.run(host='0.0.0.0', port=8080, debug=True, threaded=True, ssl_context='adhoc')

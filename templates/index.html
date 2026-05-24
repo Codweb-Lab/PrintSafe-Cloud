@@ -1,106 +1,246 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
+  <head>
+    <meta charset="UTF-8" />
     <title>PrintSafe Cloud</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
-</head>
-<body>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/main.css') }}"
+    />
+  </head>
+  <body>
     <div id="app-wrapper">
-        <header>
-            <!-- <div class="brand-logo-container" style="display: flex; align-items: center; gap: 12px; padding: 10px;"></div> -->
-            <h1>☁️ PrintSafe Cloud <span style="color:#5f6368; font-weight:normal; font-size:14px;">| v0.1.0</span></h1>
-        </header>
+      <header>
+        <!-- <div class="brand-logo-container" style="display: flex; align-items: center; gap: 12px; padding: 10px;"></div> -->
+        <h1>
+          ☁️ PrintSafe Cloud
+          <span style="color: #5f6368; font-weight: normal; font-size: 14px"
+            >| v0.1.0</span
+          >
+        </h1>
+      </header>
 
-        <div id="auth-container">
-            <div class="auth-card">
+      <div id="auth-container" class="auth-container">
+        <div class="flip-card-inner" id="flip-card-inner">
+            <div class="auth-card auth-card-front">
                 <div style="font-size: 40px; margin-bottom: 10px;">🔒</div>
-                <h3>Enter Vault Password</h3>
-                <input type="password" id="secret-key" placeholder="Password">
+                <h3>ENTER SECRET KEY</h3>
+                <input type="password" id="secret-key" placeholder="Secret Key" required>
+                <p></p>
                 <button class="btn" onclick="unlockVault()">Access Drive</button>
+                <p>OR</p>
+                <button class="btn secondary-btn" onclick="rotateCard(true);initiateQRLogin();">
+                SCAN QR TO LOGIN WITH MOBILE
+              </button>
             </div>
+            
+
+          <div class="auth-card auth-card-back">
+            <h2>📱 QR Code Login</h2>
+            <p>SCAN QR CODE IN YOUR MOBILE</p>
+
+            <div id="qr-code-display" class="qr-box-wrapper">
+              <div class="qr-placeholder-text">Loading QR Code...</div>
+            </div>
+            <!-- <p id="qr-status-text"></p> -->
+
+
+            <div class="flip-trigger-zone">
+              <button class="btn secondary-btn" onclick="rotateCard(false)">
+                ⬅️ BACK TO SECRET KEY
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- From Uiverse.io by guilhermeyohan -->
+
+      <div id="file-manager-dashboard">
+        <div class="category-view-pane">
+          <div
+            style="
+              display: flex;
+              align-items: center;
+              gap: 15px;
+              margin-bottom: 20px;
+              background: white;
+              padding: 10px 20px;
+              border-radius: 8px;
+              border: 1px solid #dadce0;
+            "
+          >
+            <button
+              id="back-folder-btn"
+              class="btn"
+              style="
+                width: auto;
+                padding: 6px 15px;
+                margin: 0;
+                background: #5f6368;
+              "
+              onclick="navigateBackFolder()"
+            >
+              ⬅️ Back
+            </button>
+            <span
+              id="current-folder-path-display"
+              style="font-weight: 600; color: #3c4043; font-size: 14px"
+              >Root Drive</span
+            >
+          </div>
+
+          <div
+            style="
+              display: flex;
+              gap: 15px;
+              align-items: center;
+              margin-bottom: 20px;
+              flex-wrap: wrap;
+              background: white;
+              padding: 12px 20px;
+              border-radius: 8px;
+              border: 1px solid #dadce0;
+            "
+          >
+            <div style="flex: 1; min-width: 200px; position: relative">
+              <input
+                type="text"
+                id="drive-search-input"
+                placeholder="🔍 Search files & folders..."
+                style="
+                  width: 100%;
+                  padding: 8px 12px;
+                  border: 1px solid #dadce0;
+                  border-radius: 4px;
+                  box-sizing: border-box;
+                "
+                oninput="renderCurrentFolderLevel()"
+              />
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 8px">
+              <span style="font-size: 12px; font-weight: 600; color: #5f6368"
+                >Type:</span
+              >
+              <select
+                id="drive-type-filter"
+                style="
+                  padding: 8px;
+                  border: 1px solid #dadce0;
+                  border-radius: 4px;
+                  background: white;
+                "
+                onchange="renderCurrentFolderLevel()"
+              >
+                <option value="all">📁 All Items</option>
+                <option value="pdf">📄 PDFs Only</option>
+                <option value="image">🖼️ Images Only</option>
+              </select>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 8px">
+              <span style="font-size: 12px; font-weight: 600; color: #5f6368"
+                >Sort By:</span
+              >
+              <div class="az-filter-wrapper">
+                <button id="az-trigger-btn" onclick="toggleAZGrid()">
+                  # A-Z
+                </button>
+                <div id="az-popup-grid" class="az-popup-grid hidden"></div>
+              </div>
+              <select
+                id="drive-sort-by"
+                style="
+                  padding: 8px;
+                  border: 1px solid #dadce0;
+                  border-radius: 4px;
+                  background: white;
+                "
+                onchange="renderCurrentFolderLevel()"
+              >
+                <option value="name-asc">🔤 Name (A to Z)</option>
+                <option value="name-desc">🔤 Name (Z to A)</option>
+                <option value="size-asc">⚖️ Size (Smallest)</option>
+                <option value="size-desc">⚖️ Size (Largest)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="file-grid" id="main-explorer-grid"></div>
+
+          <div
+            id="lazy-load-trigger"
+            style="
+              text-align: center;
+              padding: 20px;
+              font-size: 13px;
+              color: #1a73e8;
+              font-weight: 600;
+              width: 100%;
+              display: none;
+            "
+          >
+            ⏳ Loading more items...
+          </div>
         </div>
 
-        <div id="file-manager-dashboard">
-            <div class="category-view-pane">
-    <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px; background: white; padding: 10px 20px; border-radius: 8px; border: 1px solid #dadce0;">
-        <button id="back-folder-btn" class="btn" style="width: auto; padding: 6px 15px; margin: 0; background: #5f6368;" onclick="navigateBackFolder()">⬅️ Back</button>
-        <span id="current-folder-path-display" style="font-weight: 600; color: #3c4043; font-size: 14px;">Root Drive</span>
-    </div>
-    
-    <div style="display: flex; gap: 15px; align-items: center; margin-bottom: 20px; flex-wrap: wrap; background: white; padding: 12px 20px; border-radius: 8px; border: 1px solid #dadce0;">
-    
-    <div style="flex: 1; min-width: 200px; position: relative;">
-        <input type="text" id="drive-search-input" placeholder="🔍 Search files & folders..." 
-               style="width: 100%; padding: 8px 12px; border: 1px solid #dadce0; border-radius: 4px; box-sizing: border-box;"
-               oninput="renderCurrentFolderLevel()">
-    </div>
-
-    <div style="display: flex; align-items: center; gap: 8px;">
-        <span style="font-size: 12px; font-weight: 600; color: #5f6368;">Type:</span>
-        <select id="drive-type-filter" style="padding: 8px; border: 1px solid #dadce0; border-radius: 4px; background: white;" onchange="renderCurrentFolderLevel()">
-            <option value="all">📁 All Items</option>
-            <option value="pdf">📄 PDFs Only</option>
-            <option value="image">🖼️ Images Only</option>
-        </select>
-    </div>
-
-    <div style="display: flex; align-items: center; gap: 8px;">
-        <span style="font-size: 12px; font-weight: 600; color: #5f6368;">Sort By:</span>
-        <div class="az-filter-wrapper">
-        <button id="az-trigger-btn" onclick="toggleAZGrid()"># A-Z</button>
-        <div id="az-popup-grid" class="az-popup-grid hidden"></div>
-    </div>
-        <select id="drive-sort-by" style="padding: 8px; border: 1px solid #dadce0; border-radius: 4px; background: white;" onchange="renderCurrentFolderLevel()">
-            <option value="name-asc">🔤 Name (A to Z)</option>
-            <option value="name-desc">🔤 Name (Z to A)</option>
-            <option value="size-asc">⚖️ Size (Smallest)</option>
-            <option value="size-desc">⚖️ Size (Largest)</option>
-        </select>
-    </div>
-</div>
-
-    <div class="file-grid" id="main-explorer-grid"></div>
-    
-    <div id="lazy-load-trigger" style="text-align: center; padding: 20px; font-size: 13px; color: #1a73e8; font-weight: 600; width: 100%; display: none;">
-        ⏳ Loading more items...
-    </div>
-</div>
-
-            <div id="integrated-preview-pane">
-                <div class="preview-header">
-                    <div class="preview-title" id="preview-filename-display">Preview</div>
-                    <div class="preview-actions">
-                        <button class="btn-close-pane" style="background:#1a73e8; color:white;" onclick="toggleFullscreenPane()">🔲 Full Screen</button>
-                        <button class="btn-print" id="print-action-btn" style="display:none;" onclick="triggerCleanVectorPrint()">🖨️ Print Now</button>
-                        <button class="btn-close-pane" onclick="closePreviewPane()">Close</button>
-                    </div>
-                </div>
-                
-                <div class="printer-select-ui" id="printer-select-area" style="display:none;">
-                    <select class="printer-dropdown">
-                        <option>Dukaan Ka Epson Printer</option>
-                        <option>Main Canon Printer</option>
-                        <option selected>Print to PDF</option>
-                    </select>
-                </div>
-
-                <div class="preview-body-scroll" id="preview-raster-pages-area"></div>
+        <div id="integrated-preview-pane">
+          <div class="preview-header">
+            <div class="preview-title" id="preview-filename-display">
+              Preview
             </div>
+            <div class="preview-actions">
+              <button
+                class="btn-close-pane"
+                style="background: #1a73e8; color: white"
+                onclick="toggleFullscreenPane()"
+              >
+                🔲 Full Screen
+              </button>
+              <button
+                class="btn-print"
+                id="print-action-btn"
+                style="display: none"
+                onclick="triggerCleanVectorPrint()"
+              >
+                🖨️ Print Now
+              </button>
+              <button class="btn-close-pane" onclick="closePreviewPane()">
+                Close
+              </button>
+            </div>
+          </div>
+
+          <div
+            class="printer-select-ui"
+            id="printer-select-area"
+            style="display: none"
+          >
+            <select class="printer-dropdown">
+              <option>Dukaan Ka Epson Printer</option>
+              <option>Main Canon Printer</option>
+              <option selected>Print to PDF</option>
+            </select>
+          </div>
+
+          <div class="preview-body-scroll" id="preview-raster-pages-area"></div>
         </div>
+      </div>
     </div>
     <footer class="printsafe-footer">
-    <div class="footer-content">
+      <div class="footer-content">
         <p>© 2026 PrintSafe-Cloud. All rights reserved.</p>
         <p class="branding-text">
-            Made with <span class="heart-icon">❤️</span> by 
-            <span class="company-name">Codweb Lab</span>
+          Made with <span class="heart-icon">❤️</span> by
+          <span class="company-name">Codweb Lab</span>
         </p>
-    </div>
-</footer>
-    
+      </div>
+    </footer>
+
+    <div id="custom-toast-container" style="position: fixed; top: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px;"></div>
 
     <script src="{{ url_for('static', filename='js/pdf.min.js') }}"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-</body>
+  </body>
 </html>

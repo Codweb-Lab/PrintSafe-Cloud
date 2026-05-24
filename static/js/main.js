@@ -73,7 +73,7 @@ async function showIntegratedPreview(
     const response = await fetch("/fetch-file-data", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: savedPassword, filename: filename }), // Send the full path
+      body: JSON.stringify({ password: savedPassword, filename: filename, session_id: currentSessionId }), // Send the full path
     });
 
     if (!response.ok) throw new Error("Stream connection failed.");
@@ -263,11 +263,29 @@ function closePreviewPane() {
   decryptedCanvasCache = [];
 }
 
-// Customized the login response for a nested structure.
+// Secret Key Manual Login (with client-side validation)
 async function unlockVault() {
-  const password = document.getElementById("secret-key").value;
+  const passwordInput = document.getElementById("secret-key");
+  if (!passwordInput) return;
+
+  // trim from input
+  const password = passwordInput.value.trim();
   savedPassword = password;
 
+  // ==========================================
+  // Client-side validation gateway
+  // ==========================================
+  
+  // Rule 1: Is input empty?
+  if (password === "") {
+    showToast("Please enter your secret key.", "error");
+    passwordInput.focus();
+    return;
+  }
+
+  // ==========================================
+  // Network request to validate and fetch vault data
+  // ==========================================
   try {
     const response = await fetch("/fetch-vault-list", {
       method: "POST",
@@ -275,21 +293,23 @@ async function unlockVault() {
       body: JSON.stringify({ password: password }),
     });
 
-    if (!response.ok) {
-      alert("Access Denied!");
-      return;
+    if (!response.ok) { 
+      showToast("Incorrect secret key.", "error"); 
+      return; 
     }
     const data = await response.json();
+
+    // Show a beautiful success toast
+    showToast("Welcome!", "success");
 
     document.getElementById("auth-container").style.display = "none";
     document.getElementById("file-manager-dashboard").style.display = "flex";
 
-    // Keep the tree structure in a global variable and reset navigation
     globalVaultTree = data.tree;
     currentFolderNavigation = [];
     renderCurrentFolderLevel();
   } catch (error) {
-    alert("Error: " + error.message);
+    showToast("Error: " + error.message, "error");
   }
 }
 
@@ -373,7 +393,7 @@ function renderCurrentFolderLevel(appendMode = false) {
       return matchesSearch && matchesType;
     });
 
-    // जैसे ही फोल्डर का डेटा फ़िल्टर होकर तैयार हो, उसे तुरंत ए-जेड के लिए सिंक करें
+    // As soon as the folder data has been filtered and is ready, immediately sync it for A-Z.
   if (!appendMode) {
       window.currentDirectoryItemsRaw = lazyFilteredItems;
   }
@@ -485,14 +505,14 @@ function renderCurrentFolderLevel(appendMode = false) {
     grid.appendChild(card);
   });
 
-  // 2. बीच में विंडोज़ स्टाइल हल्की सी डिवाइडर लाइन (अगर फोल्डर और फाइल दोनों हैं)
+  // 2. A subtle, Windows-style divider line in the middle (if both folders and files are present).
   if (sliceFolders.length > 0 && sliceFiles.length > 0) {
     const divider = document.createElement('div');
     divider.className = "explorer-divider";
     grid.appendChild(divider);
   }
 
-  // 3. अब सिर्फ फाइल्स रेंडर करें
+  // 3. Now, render only the files.
   sliceFiles.forEach((item) => {
     const card = document.createElement("div");
     card.className = "file-card";
@@ -576,27 +596,27 @@ async function fetchAndRenderSingleThumbnail(
   const placeholder = document.getElementById(thumbId);
   if (!placeholder) return;
 
-  // 🔍 स्टेप 1: चेक करो कि क्या यह फ़ाइल पहले से ही कैशे में है?
+  // Step 1: Check if this file is already in the cache.
   if (thumbnailCache[relativeFilePath]) {
     placeholder.innerHTML = "";
     
     if (thumbnailCache[relativeFilePath].status === "protected") {
-      // अगर पहले पता चल चुका है कि यह प्रोटेक्टेड है, तो सीधे ताला दिखाओ
+      // If it's already known to be protected, show the lock directly
       placeholder.innerHTML = `<div class="protected-badge">🔒 Protected</div>`;
     } else if (thumbnailCache[relativeFilePath].status === "error") {
-      // अगर पहले एरर आया था, तो सीधा एरर दिखाओ
+      // If an error occurred previously, show the error directly
       placeholder.innerHTML = `<span style="font-size:11px;color:#888">Load Error</span>`;
     } else {
-      // अगर सक्सेसफुल थंबनेल (चाहे PDF हो या Image) है, तो सीधा कैशे से लोड करो
+      // If a successful thumbnail (whether PDF or Image) is available, load it directly from the cache
       const cachedImg = document.createElement("img");
       cachedImg.src = thumbnailCache[relativeFilePath].dataUrl;
       placeholder.appendChild(cachedImg);
     }
-    return; // 🎯 यहीं से वापस लौट जाओ, नीचे का नेटवर्क या PDF.js का हैवी कोड चलेगा ही नहीं!
+    return; // Turn back right here—the network down below, or the heavy code of PDF.js, simply won't run!
   }
 
   // ---------------------------------------------------------------------
-  // अगर कैशे में नहीं है, तो नीचे का ओरिजिनल लॉजिक पहली बार के लिए चलेगा
+  // If it is not in the cache, the original logic below will execute for the first time.
   // ---------------------------------------------------------------------
   const controller = new AbortController();
   activeThumbnailRequests.push(controller);
@@ -608,6 +628,7 @@ async function fetchAndRenderSingleThumbnail(
       body: JSON.stringify({
         password: savedPassword,
         filename: relativeFilePath,
+        session_id: currentSessionId // Make sure to add this line so that the thumbnails don't return a 403 error.
       }),
       signal: controller.signal,
     });
@@ -615,7 +636,7 @@ async function fetchAndRenderSingleThumbnail(
     if (!response.ok) return;
     const fileData = await response.json();
     
-    // अगर HTML से एलिमेंट हट चुका है तो आगे प्रोसेस करने की जरूरत नहीं
+    // If the element has been removed from the HTML, there is no need to proceed further.
     const currentPlaceholder = document.getElementById(thumbId);
     if (!currentPlaceholder) return;
 
@@ -636,11 +657,11 @@ async function fetchAndRenderSingleThumbnail(
             viewport: viewport,
           }).promise;
 
-          // 💾 कैशे में सेव करो: कैनवास को Base64 इमेज (DataURL) में बदलकर रख लो
+          // Save to Cache: Convert the canvas into a Base64 image (DataURL) and store it.
           const finalDataUrl = canvas.toDataURL();
           thumbnailCache[relativeFilePath] = { status: "success", dataUrl: finalDataUrl };
 
-          // यूआई पर रेंडर करो
+          // Render on UI
           const finalImg = document.createElement("img");
           finalImg.src = finalDataUrl;
           currentPlaceholder.innerHTML = "";
@@ -649,20 +670,20 @@ async function fetchAndRenderSingleThumbnail(
         .catch((err) => {
           if (err.name === "PasswordException") {
             protectedFilesList[relativeFilePath] = true;
-            // 💾 कैशे में रिकॉर्ड करो कि यह प्रोटेक्टेड है
+            // Save to Cache: Record that it is protected
             thumbnailCache[relativeFilePath] = { status: "protected" };
             currentPlaceholder.innerHTML = `<div class="protected-badge">🔒 Protected</div>`;
           } else {
-            // 💾 कैशे में रिकॉर्ड करो कि यह करप्टेड या एरर वाली फाइल है
+            // Save to Cache: Record that it is a corrupted or error file
             thumbnailCache[relativeFilePath] = { status: "error" };
             currentPlaceholder.innerHTML = `<span style="font-size:11px;color:#888">Load Error</span>`;
           }
         });
     } else {
-      // 🖼️ इमेज फाइल के लिए लॉजिक
+      // Logic for Image Files
       const srcDataUrl = `data:image/jpeg;base64,${fileData.base64}`;
       
-      // 💾 इमेज को भी सीधे कैशे में डाल दो ताकि दोबारा फेच न करना पड़े
+      // Put the image directly into the cache as well, so that it doesn't have to be fetched again.
       thumbnailCache[relativeFilePath] = { status: "success", dataUrl: srcDataUrl };
 
       const img = document.createElement("img");
@@ -690,16 +711,16 @@ function toggleAZGrid() {
 }
 
 // ========================================================================
-// 🖱️ Click Outside to Close: बाहर क्लिक करने पर A-Z पॉपअप बंद करना
+// Click Outside to Close: Closing the A-Z Popup by Clicking Outside
 // ========================================================================
 document.addEventListener("click", function (event) {
     const azWrapper = document.querySelector(".az-filter-wrapper");
     const azPopup = document.getElementById("az-popup-grid");
     
-    // अगर पॉपअप खुला हुआ है और क्लिक उस बटन या ग्रिड के बाहर हुआ है
+    // If the popup is open and a click occurs outside that button or grid...
     if (azPopup && !azPopup.classList.contains("hidden") && azWrapper) {
         if (!azWrapper.contains(event.target)) {
-            azPopup.classList.add("hidden"); // पॉपअप छुपा दें
+            azPopup.classList.add("hidden"); // Hide the popup
         }
     }
 });
@@ -712,7 +733,7 @@ function generateAZGrid() {
     const alphabet = "#ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
     const itemsToScan = window.currentDirectoryItemsRaw || globalVaultTree;
     
-    // वर्तमान एक्टिव फ़ोल्डर के डेटा से शुरुआती अक्षरों का सेट बनाएं
+    // Create a set of initial letters from the data in the current active folder.
     const existingInitials = new Set(
         itemsToScan.map(item => (item.name || "").trim().charAt(0).toUpperCase())
     );
@@ -722,7 +743,7 @@ function generateAZGrid() {
         span.textContent = letter;
         span.className = 'az-letter';
 
-        // चेक करें कि क्या इस अक्षर से कोई आइटम सच में है?
+        // Check if there is actually an item with this letter
         const isAvailable = (letter === '#') 
             ? itemsToScan.some(item => /[^A-Z]/i.test((item.name || "").trim().charAt(0)))
             : existingInitials.has(letter);
@@ -733,7 +754,7 @@ function generateAZGrid() {
                 toggleAZGrid(); 
             };
         } else {
-            span.classList.add('disabled'); // विंडोज़ की तरह डिसेबल (ग्रे) लुक
+            span.classList.add('disabled'); // Windows-like disabled (greyed out) look
         }
         grid.appendChild(span);
     });
@@ -749,14 +770,277 @@ function filterByLetter(letter) {
         filtered = itemsToFilter.filter(item => (item.name || "").trim().toUpperCase().startsWith(letter));
     }
 
-    // आपके लेज़ी लोडर इंजन को चकमा देने के लिए 'lazyFilteredItems' को बाईपास करें
+    // Bypass 'lazyFilteredItems' to trick your lazy loader engine
     lazyFilteredItems = filtered;
     
-    // ग्रिड साफ़ करके सिर्फ फ़िल्टर्ड डेटा रेंडर करने के लिए इंजन को ट्रिगर करें
+    // Trigger the engine to clear the grid and render only the filtered data.
     const grid = document.getElementById("main-explorer-grid") || document.getElementById("category-view-pane");
     if (grid) grid.innerHTML = "";
     lazyCurrentIndex = 0;
     
-    // appendMode = true देकर रेंडर मार दें ताकि सॉर्टिंग दोबारा न चले
+    // Set appendMode` = true, and trigger the render so that the sorting does not run again.
     renderCurrentFolderLevel(true); 
+}
+
+// ========================================================================
+// 📱 Smart Lazy QR Code Login Engine (Traffic Optimized & Synced)
+// ========================================================================
+let qrPollingInterval = null;
+let currentSessionId = null;
+
+// 1. The main function for requesting a new QR session from the server.
+async function generateNewQR() {
+    const qrDisplay = document.getElementById('qr-code-display');
+    if (!qrDisplay) return;
+
+    qrDisplay.innerHTML = "<small style='color:#666;'>Generating Secure QR...</small>";
+
+    try {
+        const response = await fetch('/generate-qr-session');
+        const data = await response.json();
+        
+        if (data.session_id && data.qr_image) {
+            currentSessionId = data.session_id;
+            // Set the QR image on the screen
+            qrDisplay.innerHTML = `<img src="${data.qr_image}" alt="Scan Me" style="width:100%; height:100%; object-fit:contain;">`;
+        }
+    } catch (e) {
+        console.error("Error generating QR Code:", e);
+        qrDisplay.innerHTML = "<small style='color:red;'>Failed to load QR</small>";
+    }
+}
+
+// 🎯 2. 'initiateQRLogin' Wrapper function to fix the error
+// Now if initiateQRLogin() is called anywhere in the project, it won't crash!
+async function initiateQRLogin() {
+    await generateNewQR();
+}
+
+// 3. 🟢 Function to start polling (when user focuses on QR)
+function startQRPolling() {
+    const statusText = document.getElementById('qr-status-text');
+    if (statusText) {
+        statusText.innerText = "⚡ Scanner Active. Waiting for scan...";
+        statusText.style.color = "#2563eb";
+    }
+
+    // If a loop is already running, clear it to prevent duplicates
+    if (qrPollingInterval) clearInterval(qrPollingInterval);
+    
+    // Start polling the backend for the status every 2 seconds.
+    qrPollingInterval = setInterval(checkQRAuthenticationStatus, 2000);
+    console.log("▶️ QR Polling Started...");
+}
+
+// 4. Function to completely stop polling (when user goes to key-login)
+function stopQRPolling() {
+    if (qrPollingInterval) {
+        clearInterval(qrPollingInterval);
+        qrPollingInterval = null;
+        console.log("⏸️ QR Polling Stopped...");
+    }
+    
+    const statusText = document.getElementById('qr-status-text');
+    if (statusText) {
+        statusText.innerText = "Waiting for response...";
+        statusText.style.color = "#64748b";
+    }
+}
+
+// 5. Desktop Unlocking Real Backend Checker
+async function checkQRAuthenticationStatus() {
+    if (!currentSessionId) return;
+    try {
+        const response = await fetch('/verify-private-scan/' + currentSessionId);
+        if (!response.ok) return; 
+        const data = await response.json();
+        
+        // When the mobile scan is 100% successful:
+        if (data.success) {
+            stopQRPolling(); // Stop the polling loop immediately
+            qrPollingInterval = null;
+            
+            const qrDisplay = document.getElementById('qr-code-display');
+            // const statusText = document.getElementById('qr-status-text');
+            
+            // if (statusText) {
+            //     statusText.innerText = "Scan Successful! Verifying...";
+            //     statusText.style.color = "#16a34a"; // Change text color to green
+            // }
+
+            // 🎯 Replace QR code with a large animated success tick
+            if (qrDisplay) {
+                qrDisplay.innerHTML = `
+                    <div class="qr-success-wrapper" style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; width:100%;">
+                        <svg class="animated-checkmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52" style="width:80px; height:80px; border-radius:50%; display:block; stroke-width:3; stroke:#22c55e; stroke-miterlimit:10; box-shadow:inset 0px 0px 0px #22c55e; animation:fill .4s ease-in-out .4s forwards, scale .3s ease-in-out .9s both;">
+                            <circle class="animated-checkmark__circle" cx="26" cy="26" r="25" fill="none" style="stroke-dasharray:166; stroke-dashoffset:166; stroke-width:3; stroke-miterlimit:10; stroke:#22c55e; fill:none; animation:stroke 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;"/>
+                            <path class="animated-checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8" style="transform-origin:50% 50%; stroke-dasharray:48; stroke-dashoffset:48; animation:stroke 0.3s cubic-bezier(0.65, 0, 0.45, 1) 0.6s forwards;"/>
+                        </svg>
+                        <style>
+                            @keyframes stroke { 100% { stroke-dashoffset: 0; } }
+                            @keyframes scale { 0%, 100% { transform: none; } 50% { transform: scale3d(1.1, 1.1, 1); } }
+                            @keyframes fill { 100% { box-shadow: inset 0px 0px 0px 40px rgba(34, 197, 94, 0.1); } }
+                        </style>
+                    </div>
+                `;
+            }
+
+            // Fetch vault data (Vault List) from the backend
+            const vaultResponse = await fetch("/fetch-vault-list", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ session_id: currentSessionId }), 
+            });
+            if (!vaultResponse.ok) return;
+            const vaultData = await vaultResponse.json();
+            
+            // Wait for 1.5 seconds (1500ms) so that the user sees the large tick animation.
+            setTimeout(() => {
+                // Hide the login screen and show the file explorer dashboard
+                document.getElementById("auth-container").style.display = "none";
+                document.getElementById("file-manager-dashboard").style.display = "flex";
+
+                // Setup data and rendering
+                globalVaultTree = vaultData.tree; 
+                currentFolderNavigation = []; 
+                renderCurrentFolderLevel();
+                showToast("Welcome!", "success");
+            }, 1500);
+        }
+    } catch (e) { 
+        console.error("Error polling QR status:", e); 
+    }
+}
+
+// ========================================================================
+// DOM Ready Hook: Always live polling without any mouse hassle
+// ========================================================================
+document.addEventListener("DOMContentLoaded", () => {
+    if (document.getElementById('auth-container')) {
+        // 1. Immediately generate QR code as soon as the page loads
+        generateNewQR();
+        
+        // 2. Without the fuss of mouse interactions, immediately start the polling loop
+        // after 2 seconds so that it continuously queries the backend to check whether
+        // the mobile device has scanned.
+        setTimeout(() => {
+            if (qrPollingInterval) clearInterval(qrPollingInterval);
+            qrPollingInterval = setInterval(checkQRAuthenticationStatus, 2000);
+            console.log("▶️ Continuous QR Polling Started...");
+        }, 1000);
+    }
+});
+
+// ========================================================================
+// 🔄 Card Rotation Toggle Engine
+// ========================================================================
+function rotateCard(shouldFlip) {
+    const cardInner = document.getElementById('flip-card-inner');
+    if (!cardInner) return;
+    
+    if (shouldFlip) {
+        cardInner.classList.add('flipped');
+    } else {
+        cardInner.classList.remove('flipped');
+    }
+}
+
+// Premium and Modern HTML Toast Alert Engine
+function showToast(message, type = "error") {
+    const container = document.getElementById("custom-toast-container");
+    if (!container) return;
+
+    // एक नया टोस्ट रैपर बनाएं
+    const toast = document.createElement("div");
+    toast.style.marginBottom = "12px";
+
+    // थिमिंग कॉन्फ़िगरेशन (Success बनाम Error)
+    const isSuccess = type === "success";
+    const borderColor = isSuccess ? "#10b981" : "#ef4444"; // हरा vs लाल
+    const bgColor = isSuccess ? "rgba(240, 253, 250, 0.95)" : "rgba(254, 242, 242, 0.95)"; // हल्का बैकग्राउंड
+    const textColor = isSuccess ? "#065f46" : "#991b1b"; // गहरा टेक्स्ट कलर
+
+    // सुंदर SVG आइकन्स (Material Design Style)
+    const successIcon = `
+        <svg style="width:20px; height:20px; color:#10b981;" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+        </svg>`;
+        
+    const errorIcon = `
+        <svg style="width:20px; height:20px; color:#ef4444;" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+        </svg>`;
+
+    const currentIcon = isSuccess ? successIcon : errorIcon;
+
+    // टोस्ट की अंदरूनी संरचना और इन-लाइन CSS मैजिक
+    toast.innerHTML = `
+        <div class="modern-toast-box" style="
+            background: ${bgColor}; 
+            color: ${textColor}; 
+            border-left: 5px solid ${borderColor}; 
+            padding: 14px 20px; 
+            border-radius: 8px; 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-size: 14px; 
+            font-weight: 550; 
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1); 
+            display: flex; 
+            align-items: center; 
+            gap: 12px; 
+            min-width: 300px; 
+            max-width: 450px;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            transform: translateX(130%); 
+            transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            position: relative;
+            pointer-events: auto;
+        ">
+            <div style="display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                ${currentIcon}
+            </div>
+            
+            <div style="flex: 1; line-height: 1.4; padding-right: 15px;">
+                ${message}
+            </div>
+            
+            <button class="toast-close-btn" style="
+                background: none; 
+                border: none; 
+                color: ${textColor}; 
+                opacity: 0.5; 
+                cursor: pointer; 
+                font-size: 18px; 
+                font-weight: bold;
+                position: absolute;
+                top: 50%;
+                right: 10px;
+                transform: translateY(-50%);
+                padding: 0 5px;
+                line-height: 1;
+                transition: opacity 0.2s;
+            " onmouseenter="this.style.opacity=1" onmouseleave="this.style.opacity=0.5" onclick="this.parentElement.parentElement.remove()">
+                &times;
+            </button>
+        </div>
+    `;
+
+    container.appendChild(toast);
+
+    // A small reflex delay for the slide-in animation
+    setTimeout(() => {
+        const box = toast.querySelector(".modern-toast-box");
+        if (box) box.style.transform = "translateX(0)";
+    }, 50);
+
+    // Automatic logic to smoothly slide out after 4.5 seconds.
+    setTimeout(() => {
+        const box = toast.querySelector(".modern-toast-box");
+        if (box) {
+            box.style.transform = "translateX(130%)";
+            box.style.opacity = "0";
+            setTimeout(() => { toast.remove(); }, 400);
+        }
+    }, 4500);
 }
