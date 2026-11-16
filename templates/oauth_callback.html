@@ -1,0 +1,14 @@
+<!doctype html>
+<html>
+  <head><title>Connecting Cloud Account...</title></head>
+  <body>
+    <script>
+      if (window.opener) {
+        window.opener.postMessage({ status: "success", provider: "{{ provider }}" }, "*");
+        window.close();
+      } else {
+        window.location.href = "/";
+      }
+    </script>
+  </body>
+</html>

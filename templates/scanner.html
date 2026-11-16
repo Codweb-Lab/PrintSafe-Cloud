@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>PrintSafe Private Scanner</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    body { font-family: sans-serif; text-align: center; background: #0f172a; padding: 20px; color: #f8fafc; }
+    #reader { width: 100%; max-width: 400px; margin: 20px auto; background: white; border-radius: 16px; overflow: hidden; }
+    .status { font-weight: bold; color: #38bdf8; margin-top: 15px; }
+  </style>
+</head>
+<body>
+  <h2>Master Scanner Active</h2>
+  <p>Scan the QR code displayed on the desktop.</p>
+  <div id="reader"></div>
+  <div id="scanned-status" class="status">Waiting for camera...</div>
+  <script>
+    const html5QrCode = new Html5Qrcode("reader");
+    html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } }, async (decodedText) => {
+      document.getElementById('scanned-status').innerText = "Authenticating...";
+      await html5QrCode.stop();
+      try {
+        const res = await fetch('/verify-private-scan/' + decodedText, { method: 'POST' });
+        if (res.ok) {
+          document.getElementById('scanned-status').innerHTML = "<span style='color:#22c55e;'>Desktop logged in!</span>";
+        } else {
+          document.getElementById('scanned-status').innerHTML = "<span style='color:#ef4444;'>Invalid or expired QR!</span>";
+        }
+      } catch (e) {
+        document.getElementById('scanned-status').innerText = "Network Error!";
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+<div id="auth-container" class="auth-container">
+  <!-- FRONT: SECRET KEY LOGIN -->
+  <div class="auth-card auth-card-front">
+    <div class="auth-brand-header">
+      <div class="auth-logo-box">
+        <img src="{{ url_for('static', filename='images/logo3.svg') }}" alt="PrintSafe Logo" />
+      </div>
+      <h2 class="auth-app-title">PrintSafe <span>Cloud</span></h2>
+      <p class="auth-app-subtitle">Zero-Trust Encrypted Document Vault</p>
+    </div>
+
+    <div class="auth-section-divider">
+      <span>ENTER SECRET KEY</span>
+    </div>
+
+    <input type="password" id="secret-key" placeholder="Enter Master Secret Key..." required onkeydown="if(event.key==='Enter') unlockVault()">
+    <button class="primary-submit-btn" onclick="unlockVault()">
+      <i class="ri-lock-unlock-line"></i> Access Vault
+    </button>
+    <p style="font-size: 11.5px; color: var(--text-sub); margin: 14px 0; font-weight: 600;">OR</p>
+    <button class="secondary-btn" onclick="rotateCard(true)">
+      <i class="ri-qr-code-line"></i> Scan QR Instead
+    </button>
+  </div>
+
+  <!-- BACK: QR CODE LOGIN -->
+  <div class="auth-card auth-card-back" style="display: none;">
+    <div class="auth-brand-header" style="margin-bottom: 12px;">
+      <div class="auth-logo-box" style="width: 48px; height: 48px; margin-bottom: 8px;">
+        <img src="{{ url_for('static', filename='images/logo3.svg') }}" alt="PrintSafe Logo" />
+      </div>
+      <h2 class="auth-app-title" style="font-size: 18px;">PrintSafe <span>Cloud</span></h2>
+    </div>
+
+    <div class="auth-section-divider">
+      <span>SCAN TO UNLOCK</span>
+    </div>
+
+    <div id="qr-code-display" style="padding: 12px; background: white; border-radius: var(--radius-card); margin-bottom: 14px; border: 1px solid var(--border); min-height: 205px; display: flex; align-items: center; justify-content: center;"></div>
+    <p style="font-size: 11.5px; color: var(--text-sub); margin: 12px 0; font-weight: 600;">OR</p>
+    <button class="secondary-btn" onclick="rotateCard(false)">
+      <i class="ri-key-2-line"></i> Use Secret Key
+    </button>
+  </div>
+</div>

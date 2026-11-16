@@ -1,0 +1,83 @@
+<header class="bento-top-header">
+  <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+    <button class="mobile-menu-trigger" onclick="toggleMobileSidebar(true)">
+      <i class="ri-menu-2-line"></i>
+    </button>
+    <div class="bento-search-bar">
+      <i class="ri-search-2-line"></i>
+      <input type="text" id="drive-search-input" placeholder="Search files or folders..." oninput="renderCurrentFolderLevel()" />
+    </div>
+  </div>
+
+  <div class="bento-header-actions">
+    <div class="restricted-badge" id="restricted-mode-indicator" title="Logged in via QR in Read & Print Mode">
+      <i class="ri-shield-keyhole-line"></i> Restricted QR Mode
+    </div>
+
+    <button class="connected-devices-pill master-only-nav" onclick="openConnectedDevicesModal(true)" title="Manage Connected QR Devices & Restrictions">
+      <span class="dot"></span>
+      <i class="ri-computer-line"></i>
+      <span id="header-connected-count">0</span>
+    </button>
+
+    <!-- 🎨 MODERN CUSTOM UI DESIGN SYSTEM DROPDOWN -->
+    <div class="modern-dropdown" id="dropdown-ui-style">
+      <input type="hidden" id="ui-style-selector" value="glass" />
+      <button type="button" class="modern-dropdown-trigger" onclick="toggleModernDropdown('dropdown-ui-style', event)" title="Switch UI Architecture">
+        <i class="ri-palette-line" style="color:var(--accent);font-size:15px;"></i>
+        <span id="ui-style-label">Glass Bento</span>
+        <i class="ri-arrow-down-s-line dropdown-chevron"></i>
+      </button>
+      <div class="modern-dropdown-menu">
+        <div class="dropdown-menu-caption">UI Design System</div>
+        <div class="modern-dropdown-item active" data-value="glass" onclick="selectModernUIStyle('glass', 'Glass Bento', this)">
+          <div class="dd-item-left"><i class="ri-sparkling-2-line" style="color:#3b82f6;"></i> <span>Glass Bento</span></div>
+          <i class="ri-check-line dd-check"></i>
+        </div>
+        <div class="modern-dropdown-item" data-value="fluent" onclick="selectModernUIStyle('fluent', 'Microsoft Fluent', this)">
+          <div class="dd-item-left"><i class="ri-windows-fill" style="color:#0078d4;"></i> <span>Microsoft Fluent</span></div>
+          <i class="ri-check-line dd-check"></i>
+        </div>
+        <div class="modern-dropdown-item" data-value="carbon" onclick="selectModernUIStyle('carbon', 'IBM Carbon', this)">
+          <div class="dd-item-left"><i class="ri-terminal-box-line" style="color:#0f62fe;"></i> <span>IBM Carbon</span></div>
+          <i class="ri-check-line dd-check"></i>
+        </div>
+        <div class="modern-dropdown-item" data-value="cyber" onclick="selectModernUIStyle('cyber', 'Cyber Neon', this)">
+          <div class="dd-item-left"><i class="ri-flashlight-fill" style="color:#00f5d4;"></i> <span>Cyber Neon</span></div>
+          <i class="ri-check-line dd-check"></i>
+        </div>
+      </div>
+    </div>
+
+    <!-- 🌓 3-OPTION ICON THEME MODE SWITCHER -->
+    <div class="theme-segmented-control">
+      <button class="theme-icon-btn" id="theme-btn-light" onclick="setThemeMode('light')" title="Light Mode"><i class="ri-sun-line"></i></button>
+      <button class="theme-icon-btn" id="theme-btn-dark" onclick="setThemeMode('dark')" title="Dark Mode"><i class="ri-moon-clear-line"></i></button>
+      <button class="theme-icon-btn" id="theme-btn-system" onclick="setThemeMode('system')" title="System Default"><i class="ri-computer-line"></i></button>
+    </div>
+
+    <!-- 👤 MODERN PROFILE DROPDOWN -->
+    <div class="profile-dropdown-wrapper" style="position: relative;">
+      <div class="profile-avatar-pill" onclick="toggleProfileDropdown()">K</div>
+      
+      <div id="profile-menu-dropdown" class="modern-profile-popover" style="display: none;">
+        <div style="padding: 10px 12px; border-bottom: 1px solid var(--border); margin-bottom: 6px;">
+          <div style="font-weight: 700; font-size: 13.5px; color: var(--text-title);">Kapil Jangid</div>
+          <div style="font-size: 11px; color: var(--text-sub);">kapil@codweb.lab</div>
+        </div>
+        <div class="modern-dropdown-item" onclick="openConnectedDevicesModal(true)">
+          <div class="dd-item-left"><i class="ri-computer-line" style="color:#22c55e;"></i> <span>Connected Logins</span></div>
+        </div>
+        <div class="modern-dropdown-item" onclick="openCloudDriveManager(true)">
+          <div class="dd-item-left"><i class="ri-cloud-line" style="color:var(--accent);"></i> <span>Cloud Drive Manager</span></div>
+        </div>
+        <div class="modern-dropdown-item" onclick="togglePasswordModal(true)">
+          <div class="dd-item-left"><i class="ri-settings-4-line"></i> <span>Master Settings</span></div>
+        </div>
+        <div class="modern-dropdown-item" onclick="performLogout()" style="color: #ef4444; border-top: 1px solid var(--border); margin-top: 6px; padding-top: 9px;">
+          <div class="dd-item-left"><i class="ri-logout-box-r-line" style="color:#ef4444;"></i> <span>Logout Vault</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
