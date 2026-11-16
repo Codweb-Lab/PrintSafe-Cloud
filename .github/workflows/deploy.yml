@@ -1,0 +1,45 @@
+name: Deploy PrintSafe Cloud to cPanel
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Production Code
+        uses: actions/checkout@v4
+
+      - name: Configure SSH Agent
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.CPANEL_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p ${{ secrets.CPANEL_PORT }} -H ${{ secrets.CPANEL_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Sync Application Files via Rsync
+        run: |
+          rsync -avz --delete \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='.env' \
+            --exclude='*.db' \
+            --exclude='*.sqlite3' \
+            --exclude='documents/' \
+            --exclude='venv/' \
+            --exclude='tmp/' \
+            --exclude='__pycache__/' \
+            -e "ssh -p ${{ secrets.CPANEL_PORT }}" \
+            ./ ${{ secrets.CPANEL_USERNAME }}@${{ secrets.CPANEL_HOST }}:${{ secrets.CPANEL_APP_PATH }}/
+
+      - name: Install Dependencies & Restart Passenger
+        run: |
+          ssh -p ${{ secrets.CPANEL_PORT }} ${{ secrets.CPANEL_USERNAME }}@${{ secrets.CPANEL_HOST }} << 'EOF'
+            cd ${{ secrets.CPANEL_APP_PATH }}
+            mkdir -p documents tmp
+            ${{ secrets.CPANEL_PIP_PATH }} install -r requirements.txt --quiet
+            touch tmp/restart.txt
+          EOF
