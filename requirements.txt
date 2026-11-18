@@ -1,22 +1,40 @@
-blinker==1.9.0
-certifi==2026.6.17
-cffi==2.0.0
-charset-normalizer==3.4.9
-click==8.4.1
-colorama==0.4.6
-cryptography==48.0.0
+# Core Web Framework
 Flask==3.1.3
-idna==3.18
-itsdangerous==2.2.0
-Jinja2==3.1.6
-MarkupSafe==3.0.3
-oauthlib==3.3.1
-pillow==12.2.0
-pycparser==3.0
-pyOpenSSL==26.2.0
-python-dotenv==1.2.2
-qrcode==8.2
-requests==2.34.2
-requests-oauthlib==2.0.0
-urllib3==2.7.0
 Werkzeug==3.1.8
+Jinja2==3.1.6
+itsdangerous==2.2.0
+click==8.4.1
+blinker==1.9.0
+MarkupSafe==3.0.3
+python-dotenv==1.2.2
+
+# Security, Encryption, 2FA & QR
+cryptography==48.0.0
+pyOpenSSL==26.2.0
+cffi==2.0.0
+pycparser==3.0
+pyotp==2.9.0
+qrcode==8.2
+pillow==12.2.0
+
+# HTTP & OAuth2 Clients (Google Drive & Microsoft OneDrive)
+requests==2.34.2
+oauthlib==3.3.1
+requests-oauthlib==2.0.0
+google-api-python-client>=2.150.0
+google-auth>=2.35.0
+google-auth-oauthlib>=1.2.1
+google-auth-httplib2>=0.2.0
+msal>=1.31.0
+certifi==2026.6.17
+charset-normalizer==3.4.9
+idna==3.18
+urllib3==2.7.0
+
+# Hosting Storage (SSH / SFTP)
+paramiko>=3.4.0
+
+# Production Servers (Linux & Windows)
+gunicorn>=23.0.0
+waitress>=3.0.0
+colorama==0.4.6

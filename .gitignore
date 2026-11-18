@@ -1,3 +1,27 @@
+# ========================================================================
+# PrintSafe Cloud — Isolated Databases, Keys & Vault Storage
+# ========================================================================
+# SQLite Databases & WAL Journals
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite3-journal
+
+# Isolated Admin Secrets Database & Key
+admin_vault.db
+admin_vault.db-*
+.admin_vault.key
+.vault.key
+
+# Local Encrypted Vault & Temporary Uploads
+vault_storage/
+uploads/
+temp_uploads/
+tmp/
+*.enc
+
 # Byte-compiled / optimized / DLL files
 instance/
 __pycache__/
@@ -6,6 +30,17 @@ __pycache__/
 
 # C extensions
 *.so
+
+# Old files
+*.bak
+*.old
+*.orig
+
+# Secret keys
+*.key
+*_key
+*.pem
+*.pub
 
 # Distribution / packaging
 .Python
@@ -61,6 +96,9 @@ cover/
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
+
+# Archive files
+*.zip
 
 # Flask stuff:
 instance/
@@ -150,6 +188,8 @@ activemq-data/
 
 # Environments
 .env
+.env.*
+!.env.example
 .envrc
 .venv
 env/
@@ -201,6 +241,7 @@ cython_debug/
 #   and can be added to the global gitignore or merged into this file. However, if you prefer, 
 #   you could uncomment the following to ignore the entire vscode folder
 # .vscode/
+
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
 
@@ -217,3 +258,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# OS generated files
+.DS_Store
+Thumbs.db
