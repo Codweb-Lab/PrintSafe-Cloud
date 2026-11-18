@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-style="carbon">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PrintSafe Cloud — Admin Control Plane</title>
+  <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='images/logo3.svg') }}" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v=10.0" />
+</head>
+<body>
+  <!-- HEADER MATCHED TO IMAGE 2 + IMAGE 3 DESIGN DROPDOWN (NO HEADER SEARCH) -->
+  <header class="topbar">
+    <div class="brand-group">
+      <div class="brand-logo-wrap">
+        <img src="{{ url_for('static', filename='images/logo3.svg') }}" alt="Logo">
+      </div>
+      <div class="brand-title">PrintSafe<br>Cloud</div>
+      <span class="version-pill">v2.2.0</span>
+    </div>
+
+    <div class="header-right-tools">
+      <div class="header-chip-btn hide-sm" style="cursor:default;">
+        <span class="dot-online"></span> Admin Active
+      </div>
+
+      <a href="/" class="header-chip-btn">
+        <i class="ri-information-line"></i> <span class="hide-sm">User Portal</span>
+      </a>
+
+      <!-- UI DESIGN SYSTEM DROPDOWN (EXACT MATCH TO IMAGE 3) -->
+      <div class="design-dropdown-wrap" id="admin-design-dropdown">
+        <button type="button" class="design-trigger-btn" onclick="toggleDesignStyleMenu(event)">
+          <i class="ri-palette-line" style="color:var(--info);"></i>
+          <span id="current-design-label">IBM Carbon</span>
+          <i class="ri-arrow-down-s-line"></i>
+        </button>
+        <div class="design-menu-popover" id="design-menu-popover">
+          <div class="design-menu-header">UI Design System</div>
+          <button type="button" class="design-option-item" data-style-val="bento" onclick="setAdminDesignStyle('bento')">
+            <span class="design-option-left"><i class="ri-sparkling-fill" style="color:#38bdf8;"></i> Glass Bento</span>
+            <i class="ri-check-line check-mark" style="display:none;"></i>
+          </button>
+          <button type="button" class="design-option-item" data-style-val="fluent" onclick="setAdminDesignStyle('fluent')">
+            <span class="design-option-left"><i class="ri-microsoft-fill" style="color:#38bdf8;"></i> Microsoft Fluent</span>
+            <i class="ri-check-line check-mark" style="display:none;"></i>
+          </button>
+          <button type="button" class="design-option-item active" data-style-val="carbon" onclick="setAdminDesignStyle('carbon')">
+            <span class="design-option-left"><i class="ri-terminal-window-fill" style="color:#4589ff;"></i> IBM Carbon</span>
+            <i class="ri-check-line check-mark"></i>
+          </button>
+          <button type="button" class="design-option-item" data-style-val="neon" onclick="setAdminDesignStyle('neon')">
+            <span class="design-option-left"><i class="ri-flashlight-fill" style="color:#22d3ee;"></i> Cyber Neon</span>
+            <i class="ri-check-line check-mark" style="display:none;"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- LIGHT / DARK / SYSTEM SWITCHER -->
+      <div class="theme-pill-group" title="Switch Theme">
+        <button type="button" class="theme-btn" data-theme-val="light" onclick="setAdminTheme('light')" title="Light Theme"><i class="ri-sun-line"></i></button>
+        <button type="button" class="theme-btn active" data-theme-val="dark" onclick="setAdminTheme('dark')" title="Dark Theme"><i class="ri-moon-clear-line"></i></button>
+        <button type="button" class="theme-btn" data-theme-val="system" onclick="setAdminTheme('system')" title="System Theme"><i class="ri-computer-line"></i></button>
+      </div>
+
+      <div class="avatar-badge" title="Kapil Jangid (Admin)">K</div>
+    </div>
+  </header>
+
+  {% if not is_admin %}
+  <div style="flex:1; display:flex; align-items:center; justify-content:center; padding:20px;">
+    <div class="card" style="max-width: 400px; width:100%;">
+      <div style="font-size:11px;font-weight:700;color:var(--info);margin-bottom:6px;text-transform:uppercase;">Zero-Trust Control Plane</div>
+      <h2 style="margin:0 0 6px;font-size:20px;">Administrator Sign In</h2>
+      <p style="margin:0 0 18px;font-size:12.5px;color:var(--text-secondary);">Authenticate with your Master Administrator Secret Key.</p>
+      <label class="field-label">Administrator Secret Key</label>
+      <input type="password" id="admin-secret-input" class="input" placeholder="Enter Secret Key..." style="margin-bottom:14px;" onkeydown="if(event.key==='Enter') submitAdminLogin()">
+      <div id="admin-login-err" style="color:var(--danger);font-size:12px;margin-bottom:10px;display:none;"></div>
+      <button onclick="submitAdminLogin()" class="btn btn-sky" style="width:100%;justify-content:center;">
+        Continue to Console <i class="ri-arrow-right-line"></i>
+      </button>
+    </div>
+  </div>
+  {% else %}
+  <div class="admin-shell">
+    <aside class="admin-sidebar">
+      <div class="sidebar-top-links">
+        <div class="nav-cat-label">Storage Explorer</div>
+        <button class="admin-tab-btn active" onclick="switchAdminCategory('vault', this)">
+          <i class="ri-hard-drive-2-line"></i> Hosted Server Vault
+        </button>
+        <button class="admin-tab-btn" onclick="switchAdminCategory('overview', this)">
+          <i class="ri-dashboard-3-line"></i> System Telemetry
+        </button>
+
+        <div class="nav-cat-label">SaaS &amp; Messaging</div>
+        <button class="admin-tab-btn" onclick="switchAdminCategory('features', this)">
+          <i class="ri-toggle-line"></i> Feature Rollout
+        </button>
+        <button class="admin-tab-btn" onclick="switchAdminCategory('integrations', this)">
+          <i class="ri-key-2-line"></i> OAuth &amp; Multi-SMTP
+        </button>
+        <button class="admin-tab-btn" onclick="switchAdminCategory('templates', this)">
+          <i class="ri-mail-star-line"></i> Email Templates
+        </button>
+        <button class="admin-tab-btn" onclick="switchAdminCategory('broadcast', this)">
+          <i class="ri-megaphone-line"></i> Broadcast Center
+        </button>
+        <button class="admin-tab-btn" onclick="switchAdminCategory('users', this)">
+          <i class="ri-team-line"></i> Registered Users
+        </button>
+      </div>
+
+      <div class="sidebar-bottom-logout">
+        <button type="button" onclick="confirmAdminLogout()" class="btn-sidebar-logout">
+          <i class="ri-logout-box-r-line"></i> Logout Admin
+        </button>
+      </div>
+    </aside>
+
+    <main class="admin-main">
+      <!-- 1. HOSTED SERVER VAULT EXPLORER (WITH IN-EXPLORER SEARCH + RIGHT-CLICK CONTEXT MENU) -->
+      <section id="panel-vault" class="admin-panel active">
+        <div class="explorer-filter-bar">
+          <div class="filter-pills">
+            <button type="button" class="filter-pill active" onclick="setVaultFilter('all', this)"><i class="ri-apps-2-line"></i> All Items</button>
+            <button type="button" class="filter-pill" onclick="setVaultFilter('folders', this)"><i class="ri-folder-3-line"></i> Folders</button>
+            <button type="button" class="filter-pill" onclick="setVaultFilter('pdf', this)"><i class="ri-file-pdf-2-line"></i> PDFs</button>
+            <button type="button" class="filter-pill" onclick="setVaultFilter('images', this)"><i class="ri-image-line"></i> Images</button>
+          </div>
+
+          <!-- Search Input Placed Exclusively Inside Explorer -->
+          <div class="explorer-search-box">
+            <i class="ri-search-line"></i>
+            <input type="text" id="explorer-search-input" class="explorer-search-input" placeholder="Search files or folders..." oninput="renderVaultExplorerItems(this.value)">
+          </div>
+
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <input type="file" id="vault-upload-input" multiple style="display:none;" onchange="handleVaultFileUpload(this.files)">
+            <button type="button" onclick="openCreateFolderModal()" class="btn btn-ghost"><i class="ri-folder-add-line"></i> New Folder</button>
+            <button type="button" onclick="document.getElementById('vault-upload-input').click()" class="btn btn-emerald"><i class="ri-upload-cloud-2-line"></i> Upload Here</button>
+            <div class="theme-pill-group">
+              <button type="button" class="theme-btn active" id="btn-view-grid" onclick="setVaultViewMode('grid')" title="Grid View"><i class="ri-grid-fill"></i></button>
+              <button type="button" class="theme-btn" id="btn-view-list" onclick="setVaultViewMode('list')" title="List View"><i class="ri-list-check"></i></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="explorer-shell" oncontextmenu="handleExplorerContextMenu(event, '')">
+          <div class="explorer-toolbar">
+            <div class="explorer-breadcrumb" id="vault-breadcrumb-bar"></div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <input type="text" id="admin-vault-path-input" class="input" style="width:230px;padding:4px 8px;font-size:11.5px;font-family:'IBM Plex Mono',monospace;" placeholder="Root Server Path">
+              <button type="button" onclick="saveAdminVaultPath()" class="btn btn-ghost" style="padding:4px 9px;font-size:11.5px;">Set Root</button>
+            </div>
+          </div>
+          <div class="explorer-viewport" id="admin-hosted-entries"></div>
+        </div>
+      </section>
+
+      <!-- 2. SYSTEM TELEMETRY -->
+      <section id="panel-overview" class="admin-panel">
+        <div class="grid-4" id="admin-stats-grid"></div>
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title"><i class="ri-pulse-line" style="color:var(--success);"></i> Infrastructure &amp; Encrypted Secrets Architecture</h3>
+            <button onclick="loadOverviewAndUsers(true)" class="btn btn-sky"><i class="ri-refresh-line"></i> Refresh Telemetry</button>
+          </div>
+          <p style="font-size:13px;color:var(--text-secondary);margin:0;">
+            All OAuth secrets, Relay keys, and Multi-SMTP passwords are encrypted inside isolated <strong>admin_vault.db (AES-256 PBKDF2-HMAC-SHA256)</strong>.
+          </p>
+        </div>
+      </section>
+
+      <!-- 3. FEATURE ROLLOUT -->
+      <section id="panel-features" class="admin-panel">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title"><i class="ri-toggle-fill" style="color:var(--info);"></i> Platform Feature Rollout Cards</h3>
+          </div>
+          <div class="cards-grid-3" id="admin-feature-flags-list"></div>
+        </div>
+      </section>
+
+      <!-- 4. OAUTH & MULTI-SMTP -->
+      <section id="panel-integrations" class="admin-panel">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title"><i class="ri-mail-send-fill" style="color:var(--success);"></i> Multi-SMTP OTP Gateways (Single-Active Failover)</h3>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button type="button" onclick="triggerTestSmtp()" class="btn btn-emerald"><i class="ri-flask-line"></i> Test Active SMTP</button>
+              <button type="button" onclick="openSmtpEditorModal()" class="btn btn-sky"><i class="ri-add-line"></i> Add SMTP Gateway</button>
+            </div>
+          </div>
+          <div id="smtp-profiles-list-container"></div>
+        </div>
+
+        <div class="grid-3">
+          <div class="card" style="margin-bottom:0;display:flex;flex-direction:column;justify-content:space-between;gap:12px;">
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <span style="font-weight:700;font-size:14.5px;"><i class="ri-google-fill" style="color:#ea4335;"></i> Google OAuth 2.0</span>
+                <span class="carbon-tag tag-blue">OAuth</span>
+              </div>
+              <div id="google-cfg-status" style="font-size:12px;color:var(--success);font-weight:600;">Checking...</div>
+            </div>
+            <button type="button" onclick="openModalById('modal-google-oauth')" class="btn btn-ghost" style="width:100%;justify-content:center;">Configure Google OAuth</button>
+          </div>
+
+          <div class="card" style="margin-bottom:0;display:flex;flex-direction:column;justify-content:space-between;gap:12px;">
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <span style="font-weight:700;font-size:14.5px;"><i class="ri-microsoft-fill" style="color:var(--info);"></i> Microsoft / Outlook</span>
+                <span class="carbon-tag tag-blue">Entra ID</span>
+              </div>
+              <div id="onedrive-cfg-status" style="font-size:12px;color:var(--success);font-weight:600;">Checking...</div>
+            </div>
+            <button type="button" onclick="openModalById('modal-onedrive-oauth')" class="btn btn-ghost" style="width:100%;justify-content:center;">Configure Microsoft OAuth</button>
+          </div>
+
+          <div class="card" style="margin-bottom:0;display:flex;flex-direction:column;justify-content:space-between;gap:12px;">
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <span style="font-weight:700;font-size:14.5px;"><i class="ri-shield-keyhole-fill" style="color:var(--warning);"></i> HTTPS Mail Relay</span>
+                <span class="carbon-tag tag-amber">AES-256</span>
+              </div>
+              <div id="relay-cfg-status" style="font-size:12px;color:var(--success);font-weight:600;">Checking...</div>
+            </div>
+            <button type="button" onclick="openModalById('modal-https-relay')" class="btn btn-ghost" style="width:100%;justify-content:center;">Configure Relay Bridge</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5. EMAIL TEMPLATES STUDIO -->
+      <section id="panel-templates" class="admin-panel">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title"><i class="ri-mail-star-fill" style="color:var(--info);"></i> Custom Branded Email Templates Studio</h3>
+              <div style="font-size:12px;color:var(--text-secondary);margin-top:3px;">Design custom HTML templates with brand logos for OTP, Signup Welcome, Broadcasts, and Security Alerts.</div>
+            </div>
+            <button type="button" onclick="openEmailTemplateModal()" class="btn btn-sky"><i class="ri-add-circle-line"></i> Create Custom Template</button>
+          </div>
+          <div class="cards-grid-3" id="admin-email-templates-grid"></div>
+        </div>
+      </section>
+
+      <!-- 6. BROADCAST CENTER -->
+      <section id="panel-broadcast" class="admin-panel">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title"><i class="ri-megaphone-fill" style="color:var(--info);"></i> Global Broadcast &amp; Scheduled Announcement Center</h3>
+              <div style="font-size:12px;color:var(--text-secondary);margin-top:3px;">Send immediate or scheduled push alerts and emails to all registered users.</div>
+            </div>
+            <button type="button" onclick="openModalById('modal-new-broadcast')" class="btn btn-sky"><i class="ri-send-plane-fill"></i> Compose Broadcast</button>
+          </div>
+          <div id="admin-broadcasts-list"></div>
+        </div>
+      </section>
+
+      <!-- 7. REGISTERED USERS -->
+      <section id="panel-users" class="admin-panel">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title"><i class="ri-team-fill" style="color:var(--info);"></i> Registered SaaS Users</h3>
+          </div>
+          <div class="cards-grid-3" id="admin-users-container"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+  {% endif %}
+
+  <!-- CUSTOM RIGHT-CLICK CONTEXT MENU FOR EXPLORER -->
+  <div id="vault-context-menu" class="vault-context-menu"></div>
+
+  {% include 'partials/admin_modals.html' %}
+
+  <div id="admin-toast-box"></div>
+
+  <footer class="footer">
+    <span>© 2026 PrintSafe-Cloud. All rights reserved.</span>
+    <span>Made with <span style="color:#ef4444;">♥</span> by <strong>Kapil Jangid @Codweb Lab</strong></span>
+  </footer>
+
+  <script src="{{ url_for('static', filename='js/admin_core.js') }}?v=10.0"></script>
+  <script src="{{ url_for('static', filename='js/admin_integrations.js') }}?v=10.0"></script>
+</body>
+</html>
