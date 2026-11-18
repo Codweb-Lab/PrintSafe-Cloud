@@ -45,14 +45,28 @@ jobs:
               -czf - . | ssh -p "$SSH_PORT" -i ~/.ssh/id_ed25519 "${{ secrets.CPANEL_USERNAME }}@${{ secrets.CPANEL_HOST }}" \
               "mkdir -p '${{ secrets.CPANEL_APP_PATH }}' && tar -xzf - -C '${{ secrets.CPANEL_APP_PATH }}'"
 
-      - name: Install Dependencies & Restart Passenger
+      - name: Install Dependencies & Hard Restart Python App
+        env:
+          APP_PATH: ${{ secrets.CPANEL_APP_PATH }}
+          PIP_PATH: ${{ secrets.CPANEL_PIP_PATH }}
         run: |
           SSH_PORT="${{ secrets.CPANEL_PORT }}"
           SSH_PORT="${SSH_PORT:-22}"
 
-          ssh -p "$SSH_PORT" -i ~/.ssh/id_ed25519 "${{ secrets.CPANEL_USERNAME }}@${{ secrets.CPANEL_HOST }}" << 'EOF'
-            cd "${{ secrets.CPANEL_APP_PATH }}"
-            mkdir -p documents tmp
-            "${{ secrets.CPANEL_PIP_PATH }}" install -r requirements.txt --quiet
+          ssh -p "$SSH_PORT" -i ~/.ssh/id_ed25519 "${{ secrets.CPANEL_USERNAME }}@${{ secrets.CPANEL_HOST }}" "
+            set -e
+            cd '$APP_PATH'
+            mkdir -p documents tmp public
+            '$PIP_PATH' install -r requirements.txt --quiet
+
+            # 1. Official cPanel UAPI Restart (same as clicking Stop/Start in cPanel UI)
+            uapi PassengerApps restart_app app_root='$APP_PATH' >/dev/null 2>&1 || true
+
+            # 2. Kill any lingering Passenger Python workers so next request boots fresh
+            VENV_BIN=\$(dirname '$PIP_PATH')
+            pkill -f \"\$VENV_BIN/python\" >/dev/null 2>&1 || true
+
+            # 3. Standard Passenger restart trigger
             touch tmp/restart.txt
-          EOF
+            echo '✅ Deployment & Hard Restart Completed!'
+          "
