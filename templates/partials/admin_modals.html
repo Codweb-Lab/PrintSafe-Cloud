@@ -1,0 +1,333 @@
+<!-- 1. SMTP GATEWAY ADD / EDIT MODAL -->
+<div id="modal-smtp-editor" class="vault-modal-overlay" onclick="if(event.target===this) closeModalById('modal-smtp-editor')">
+  <div class="vault-modal-card modal-lg">
+    <div class="vault-modal-header">
+      <h3 class="vault-modal-title"><i class="ri-mail-send-fill" style="color:var(--cds-support-success);"></i> <span id="smtp-editor-title">Add SMTP Gateway Profile</span></h3>
+      <button type="button" class="vault-modal-close" onclick="closeModalById('modal-smtp-editor')"><i class="ri-close-line"></i></button>
+    </div>
+
+    <input type="hidden" id="edit-smtp-id" value="">
+    <input type="hidden" id="edit-smtp-provider" value="cpanel">
+
+    <div class="preset-pills-row">
+      <button type="button" class="preset-pill active" data-preset="cpanel" onclick="applySmtpPreset('cpanel', this)"><i class="ri-server-line"></i> cPanel / Domain</button>
+      <button type="button" class="preset-pill" data-preset="gmail" onclick="applySmtpPreset('gmail', this)"><i class="ri-google-fill"></i> Gmail SMTP</button>
+      <button type="button" class="preset-pill" data-preset="outlook" onclick="applySmtpPreset('outlook', this)"><i class="ri-microsoft-fill"></i> Outlook / 365</button>
+      <button type="button" class="preset-pill" data-preset="brevo" onclick="applySmtpPreset('brevo', this)"><i class="ri-send-plane-2-line"></i> Brevo / Zoho</button>
+      <button type="button" class="preset-pill" data-preset="custom" onclick="applySmtpPreset('custom', this)"><i class="ri-settings-3-line"></i> Custom</button>
+    </div>
+
+    <div class="grid-2">
+      <div>
+        <label class="field-label">Profile Label</label>
+        <input type="text" id="adm-smtp-label" class="input" placeholder="e.g. Primary Domain Mailer">
+      </div>
+      <div>
+        <label class="field-label">SMTP Server Host</label>
+        <input type="text" id="adm-smtp-host" class="input" placeholder="e.g. mail.yourdomain.com">
+      </div>
+      <div>
+        <label class="field-label">SMTP Port &amp; Encryption</label>
+        <select id="adm-smtp-port" class="select-input">
+          <option value="465">465 (SSL/TLS — Recommended for cPanel)</option>
+          <option value="587">587 (STARTTLS — Gmail / Outlook / Brevo)</option>
+          <option value="25">25 (Standard Unencrypted)</option>
+        </select>
+      </div>
+      <div>
+        <label class="field-label">SMTP Auth Username</label>
+        <input type="text" id="adm-smtp-user" class="input" placeholder="e.g. no-reply@yourdomain.com">
+      </div>
+      <div>
+        <label class="field-label">SMTP Password / App Password</label>
+        <input type="password" id="adm-smtp-pass" class="input" placeholder="Leave blank on edit to keep existing">
+      </div>
+      <div>
+        <label class="field-label">Display Sender Name</label>
+        <input type="text" id="adm-smtp-from-name" class="input" value="PrintSafe Cloud">
+      </div>
+      <div>
+        <label class="field-label">Masked No-Reply Address</label>
+        <input type="email" id="adm-smtp-from-email" class="input" placeholder="e.g. no-reply@yourdomain.com">
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;padding-top:16px;">
+        <input type="checkbox" id="adm-smtp-make-active" checked style="width:16px;height:16px;accent-color:var(--cds-interactive);">
+        <label for="adm-smtp-make-active" style="font-size:12.5px;font-weight:600;cursor:pointer;">Set as Active Gateway immediately</label>
+      </div>
+    </div>
+
+    <div id="smtp-preset-guide" style="font-size:12px;color:var(--cds-text-secondary);background:var(--cds-background);border-left:3px solid var(--cds-interactive);padding:10px 12px;margin-top:12px;">
+      <b>cPanel / Custom Domain:</b> Routes via HTTPS Relay if configured for your domain, or directly over SSL Port 465.
+    </div>
+
+    <div class="vault-modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="closeModalById('modal-smtp-editor')">Cancel</button>
+      <button type="button" class="btn btn-sky" onclick="saveSmtpProfileForm()"><i class="ri-shield-check-line"></i> Encrypt &amp; Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- 2. GOOGLE OAUTH 2.0 MODAL -->
+<div id="modal-google-oauth" class="vault-modal-overlay" onclick="if(event.target===this) closeModalById('modal-google-oauth')">
+  <div class="vault-modal-card">
+    <div class="vault-modal-header">
+      <h3 class="vault-modal-title"><i class="ri-google-fill" style="color:#ea4335;"></i> Google OAuth 2.0</h3>
+      <button type="button" class="vault-modal-close" onclick="closeModalById('modal-google-oauth')"><i class="ri-close-line"></i></button>
+    </div>
+    <div class="preset-pills-row">
+      <button type="button" class="preset-pill active" onclick="applyOAuthPreset('google', 'web', this)">Web App</button>
+      <button type="button" class="preset-pill" onclick="applyOAuthPreset('google', 'drive_login', this)">Drive + Sign-In</button>
+    </div>
+    <label class="field-label">Google Client ID</label>
+    <input type="text" id="adm-goog-id" class="input" placeholder="e.g. 1234567890-abc.apps.googleusercontent.com" style="margin-bottom:12px;">
+    <label class="field-label">Google Client Secret</label>
+    <input type="password" id="adm-goog-secret" class="input" placeholder="e.g. GOCSPX-..." style="margin-bottom:12px;">
+    <div id="goog-preset-hint" style="font-size:11.5px;color:var(--cds-text-secondary);background:var(--cds-background);padding:10px;line-height:1.5;">
+      Authorized Redirect URIs:<br><code id="adm-goog-uris" style="word-break:break-all;color:var(--cds-support-info);"></code>
+    </div>
+    <div class="vault-modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="closeModalById('modal-google-oauth')">Cancel</button>
+      <button type="button" class="btn btn-sky" onclick="saveAdminIntegration('google')">Encrypt &amp; Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- 3. MICROSOFT / OUTLOOK OAUTH MODAL -->
+<div id="modal-onedrive-oauth" class="vault-modal-overlay" onclick="if(event.target===this) closeModalById('modal-onedrive-oauth')">
+  <div class="vault-modal-card">
+    <div class="vault-modal-header">
+      <h3 class="vault-modal-title"><i class="ri-microsoft-fill" style="color:var(--cds-support-info);"></i> Microsoft / Outlook OAuth</h3>
+      <button type="button" class="vault-modal-close" onclick="closeModalById('modal-onedrive-oauth')"><i class="ri-close-line"></i></button>
+    </div>
+    <div class="preset-pills-row">
+      <button type="button" class="preset-pill active" onclick="applyOAuthPreset('onedrive', 'multitenant', this)">Multitenant + Outlook</button>
+      <button type="button" class="preset-pill" onclick="applyOAuthPreset('onedrive', 'personal', this)">Personal Only</button>
+    </div>
+    <label class="field-label">Application (Client) ID</label>
+    <input type="text" id="adm-oned-id" class="input" placeholder="e.g. a1b2c3d4-5678-90ab-cdef-1234567890ab" style="margin-bottom:12px;">
+    <label class="field-label">Client Secret Value</label>
+    <input type="password" id="adm-oned-secret" class="input" placeholder="Paste Azure Client Secret Value..." style="margin-bottom:12px;">
+    <div id="oned-preset-hint" style="font-size:11.5px;color:var(--cds-text-secondary);background:var(--cds-background);padding:10px;line-height:1.5;">
+      Redirect URI in Entra ID:<br><code id="adm-oned-uris" style="word-break:break-all;color:var(--cds-support-info);"></code>
+    </div>
+    <div class="vault-modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="closeModalById('modal-onedrive-oauth')">Cancel</button>
+      <button type="button" class="btn btn-sky" onclick="saveAdminIntegration('onedrive')">Encrypt &amp; Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- 4. HTTPS MAIL RELAY BRIDGE MODAL -->
+<div id="modal-https-relay" class="vault-modal-overlay" onclick="if(event.target===this) closeModalById('modal-https-relay')">
+  <div class="vault-modal-card">
+    <div class="vault-modal-header">
+      <h3 class="vault-modal-title"><i class="ri-shield-keyhole-fill" style="color:var(--cds-support-warning);"></i> HTTPS Mail Relay Bridge</h3>
+      <button type="button" class="vault-modal-close" onclick="closeModalById('modal-https-relay')"><i class="ri-close-line"></i></button>
+    </div>
+    <p class="vault-modal-desc">Bypasses shared-hosting SMTP port blocks via encrypted HTTPS bridge stored in <code>admin_vault.db</code>.</p>
+    <label class="field-label">Target Mail Domain Trigger</label>
+    <input type="text" id="adm-relay-domain" class="input" placeholder="e.g. codweb.in" style="margin-bottom:12px;">
+    <label class="field-label">HTTPS Relay Endpoint URL</label>
+    <input type="url" id="adm-relay-url" class="input" placeholder="e.g. https://codweb.in/mail_relay.php" style="margin-bottom:12px;">
+    <label class="field-label">Relay API Secret Key</label>
+    <input type="password" id="adm-relay-secret" class="input" placeholder="Leave blank to keep existing key">
+    <div class="vault-modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="closeModalById('modal-https-relay')">Cancel</button>
+      <button type="button" class="btn btn-sky" onclick="saveRelayVaultConfig()">Encrypt &amp; Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- 5. COMPOSE & SCHEDULE GLOBAL BROADCAST MODAL (WITH SWITCHES + TEMPLATE SELECTOR + PREVIEW) -->
+<div id="modal-new-broadcast" class="vault-modal-overlay" onclick="if(event.target===this) closeModalById('modal-new-broadcast')">
+  <div class="vault-modal-card modal-lg">
+    <div class="vault-modal-header">
+      <h3 class="vault-modal-title"><i class="ri-megaphone-fill" style="color:var(--info);"></i> Compose Global Broadcast</h3>
+      <button type="button" class="vault-modal-close" onclick="closeModalById('modal-new-broadcast')"><i class="ri-close-line"></i></button>
+    </div>
+
+    <label class="field-label">Announcement Subject / Title</label>
+    <input type="text" id="bc-title" class="input" placeholder="e.g. Scheduled Maintenance / New Feature Available" style="margin-bottom:12px;">
+
+    <label class="field-label">Message Body (Delivered to In-App Bell &amp; User Emails)</label>
+    <textarea id="bc-message" class="textarea-input" rows="4" placeholder="Write your announcement message for all registered users..." style="margin-bottom:14px;"></textarea>
+
+    <!-- Toggle Switches Instead of Checkboxes -->
+    <div class="grid-2" style="margin-bottom:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg-app);padding:11px 14px;border:1px solid var(--border-subtle);border-radius:var(--radius-md);">
+        <span style="font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;">
+          <i class="ri-notification-3-line" style="color:var(--info);"></i> In-App Push Notification
+        </span>
+        <label class="switch">
+          <input type="checkbox" id="bc-send-push" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg-app);padding:11px 14px;border:1px solid var(--border-subtle);border-radius:var(--radius-md);">
+        <span style="font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;">
+          <i class="ri-mail-send-line" style="color:var(--success);"></i> Send Email to All Users
+        </span>
+        <label class="switch">
+          <input type="checkbox" id="bc-send-email" checked onchange="toggleBroadcastTemplateBox(this.checked)">
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Email Template Dropdown + Preview Button (Shown when Send Email Switch is ON) -->
+    <div id="bc-email-template-box" style="background:var(--bg-app);border:1px solid var(--border-subtle);border-radius:var(--radius-md);padding:12px 14px;margin-bottom:14px;">
+      <label class="field-label" style="color:var(--info);">Select Email Template for Broadcast</label>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <select id="bc-template-select" class="select-input" style="flex:1;min-width:220px;">
+          <option value="tpl_default_broadcast">General Global Announcement (Default)</option>
+        </select>
+        <button type="button" onclick="previewSelectedBroadcastTemplate()" class="btn btn-ghost" style="white-space:nowrap;">
+          <i class="ri-eye-line"></i> Preview Template
+        </button>
+      </div>
+    </div>
+
+    <label class="field-label">Delivery Schedule</label>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+      <select id="bc-schedule-mode" class="select-input" style="max-width:220px;" onchange="toggleBroadcastSchedulePicker(this.value)">
+        <option value="now">Send Immediately (Now)</option>
+        <option value="schedule">Schedule Date &amp; Time</option>
+      </select>
+
+      <!-- Modern Date + Time Picker Box -->
+      <div id="bc-datetime-wrap" style="display:none;flex:1;min-width:260px;">
+        <div style="display:flex;gap:8px;align-items:center;background:var(--bg-app);border:1px solid var(--border-subtle);border-radius:var(--radius-md);padding:6px 10px;">
+          <i class="ri-calendar-schedule-line" style="color:var(--info);font-size:16px;"></i>
+          <input type="date" id="bc-sched-date" style="background:transparent;border:none;color:var(--text-primary);font-family:'IBM Plex Mono',monospace;font-size:12.5px;outline:none;color-scheme:dark;">
+          <span style="color:var(--border-strong);">|</span>
+          <i class="ri-time-line" style="color:var(--success);font-size:15px;"></i>
+          <input type="time" id="bc-sched-time" style="background:transparent;border:none;color:var(--text-primary);font-family:'IBM Plex Mono',monospace;font-size:12.5px;outline:none;color-scheme:dark;">
+        </div>
+        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
+          <button type="button" class="preset-pill" style="padding:3px 8px;font-size:11px;" onclick="setQuickBroadcastSchedule(15)">+15 Mins</button>
+          <button type="button" class="preset-pill" style="padding:3px 8px;font-size:11px;" onclick="setQuickBroadcastSchedule(60)">+1 Hour</button>
+          <button type="button" class="preset-pill" style="padding:3px 8px;font-size:11px;" onclick="setQuickBroadcastSchedule('tomorrow_9am')">Tomorrow 9:00 AM</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="vault-modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="closeModalById('modal-new-broadcast')">Cancel</button>
+      <button type="button" id="bc-submit-btn" class="btn btn-sky" onclick="submitAdminBroadcast()"><i class="ri-send-plane-fill"></i> Dispatch Broadcast</button>
+    </div>
+  </div>
+</div>
+
+<!-- QUICK BROADCAST EMAIL TEMPLATE PREVIEW MODAL -->
+<div id="modal-bc-template-preview" class="vault-modal-overlay" onclick="if(event.target===this) closeModalById('modal-bc-template-preview')">
+  <div class="vault-modal-card modal-lg">
+    <div class="vault-modal-header">
+      <h3 class="vault-modal-title"><i class="ri-eye-fill" style="color:var(--success);"></i> <span id="bc-preview-tpl-name">Email Template Preview</span></h3>
+      <button type="button" class="vault-modal-close" onclick="closeModalById('modal-bc-template-preview')"><i class="ri-close-line"></i></button>
+    </div>
+    <div id="bc-preview-subject-line" style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;font-family:'IBM Plex Mono',monospace;"></div>
+    <iframe id="bc-preview-iframe" class="tpl-preview-frame" style="height:400px;" title="Broadcast Email Preview"></iframe>
+    <div class="vault-modal-actions">
+      <button type="button" class="btn btn-sky" onclick="closeModalById('modal-bc-template-preview')">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- 6. GENERIC CONFIRM MODAL -->
+<div id="admin-confirm-modal" class="vault-modal-overlay" onclick="if(event.target===this) closeAdminConfirmModal()">
+  <div class="vault-modal-card">
+    <div class="vault-modal-header">
+      <h3 class="vault-modal-title"><i id="adm-confirm-icon" class="ri-error-warning-fill" style="color:var(--danger);"></i> <span id="adm-confirm-title">Confirm Action</span></h3>
+      <button type="button" class="vault-modal-close" onclick="closeAdminConfirmModal()"><i class="ri-close-line"></i></button>
+    </div>
+    <p id="adm-confirm-desc" class="vault-modal-desc">Are you sure you want to continue?</p>
+    <div class="vault-modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="closeAdminConfirmModal()">Cancel</button>
+      <button type="button" id="adm-confirm-ok-btn" class="btn btn-danger" onclick="runAdminConfirmCallback()">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- 7. GENERIC INPUT PROMPT MODAL -->
+<div id="admin-input-modal" class="vault-modal-overlay" onclick="if(event.target===this) closeAdminInputModal()">
+  <div class="vault-modal-card">
+    <div class="vault-modal-header">
+      <h3 class="vault-modal-title"><i id="adm-input-icon" class="ri-folder-add-fill" style="color:var(--cds-support-info);"></i> <span id="adm-input-title">Input Required</span></h3>
+      <button type="button" class="vault-modal-close" onclick="closeAdminInputModal()"><i class="ri-close-line"></i></button>
+    </div>
+    <p id="adm-input-desc" class="vault-modal-desc">Enter details below:</p>
+    <input type="text" id="adm-input-field" class="input" placeholder="" onkeydown="if(event.key==='Enter') submitAdminInputModal()">
+    <div class="vault-modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="closeAdminInputModal()">Cancel</button>
+      <button type="button" id="adm-input-ok-btn" class="btn btn-sky" onclick="submitAdminInputModal()">Submit</button>
+    </div>
+  </div>
+</div>
+
+<!-- 8. CUSTOM EMAIL TEMPLATE STUDIO MODAL (WITH LOGO UPLOAD + LIVE PREVIEW) -->
+<div id="modal-email-template" class="vault-modal-overlay" onclick="if(event.target===this) closeModalById('modal-email-template')">
+  <div class="vault-modal-card modal-xl">
+    <div class="vault-modal-header">
+      <h3 class="vault-modal-title"><i class="ri-mail-star-fill" style="color:var(--cds-support-info);"></i> <span id="tpl-modal-heading">Create Custom Email Template</span></h3>
+      <button type="button" class="vault-modal-close" onclick="closeModalById('modal-email-template')"><i class="ri-close-line"></i></button>
+    </div>
+
+    <input type="hidden" id="tpl-edit-id" value="">
+
+    <div class="tpl-editor-split">
+      <!-- Left: Controls & HTML Source -->
+      <div>
+        <div class="grid-2" style="margin-bottom:10px;">
+          <div>
+            <label class="field-label">Template Name</label>
+            <input type="text" id="tpl-name" class="input" placeholder="e.g. Festive OTP Theme">
+          </div>
+          <div>
+            <label class="field-label">Template Category</label>
+            <select id="tpl-category" class="select-input">
+              <option value="otp">OTP Verification</option>
+              <option value="signup_welcome">Signup Success / Welcome</option>
+              <option value="broadcast">Global Broadcast</option>
+              <option value="security_alert">Security Alert</option>
+            </select>
+          </div>
+        </div>
+
+        <label class="field-label">Email Subject Line</label>
+        <input type="text" id="tpl-subject" class="input" placeholder="e.g. PrintSafe Cloud — Code {{otp_code}}" style="margin-bottom:10px;">
+
+        <label class="field-label">Brand Logo / Header Image (Upload or URL)</label>
+        <div style="display:flex;gap:8px;margin-bottom:10px;">
+          <input type="text" id="tpl-logo-url" class="input" value="/static/images/logo3.png" placeholder="/static/images/logo3.png" oninput="renderEmailTemplateLivePreview()">
+          <input type="file" id="tpl-logo-file" accept="image/*" style="display:none;" onchange="uploadTemplateLogoFile(this.files[0])">
+          <button type="button" onclick="document.getElementById('tpl-logo-file').click()" class="btn btn-ghost" style="white-space:nowrap;"><i class="ri-image-add-line"></i> Upload</button>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+          <label class="field-label" style="margin:0;">HTML Body (Variables: <code>{{otp_code}}</code>, <code>{{user_name}}</code>, <code>{{logo_url}}</code>, <code>{{message}}</code>)</label>
+        </div>
+        <textarea id="tpl-html-body" class="textarea-input" rows="9" style="font-family:'IBM Plex Mono',monospace;font-size:12px;" oninput="renderEmailTemplateLivePreview()"></textarea>
+
+        <div style="margin-top:10px;display:flex;align-items:center;gap:8px;">
+          <input type="checkbox" id="tpl-is-active" checked style="width:16px;height:16px;accent-color:var(--cds-interactive);">
+          <label for="tpl-is-active" style="font-size:12.5px;font-weight:600;cursor:pointer;">Set as Active Template for this Category</label>
+        </div>
+      </div>
+
+      <!-- Right: Live Rendered Preview -->
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <span class="field-label" style="margin:0;color:var(--cds-support-success);"><i class="ri-eye-line"></i> Live Email Preview</span>
+          <button type="button" onclick="renderEmailTemplateLivePreview()" class="btn btn-ghost" style="padding:3px 9px;font-size:11px;">Refresh Preview</button>
+        </div>
+        <iframe id="tpl-live-preview-iframe" class="tpl-preview-frame" title="Email Template Live Preview"></iframe>
+      </div>
+    </div>
+
+    <div class="vault-modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="closeModalById('modal-email-template')">Cancel</button>
+      <button type="button" class="btn btn-sky" onclick="saveEmailTemplateForm()"><i class="ri-save-line"></i> Save &amp; Apply Template</button>
+    </div>
+  </div>
+</div>

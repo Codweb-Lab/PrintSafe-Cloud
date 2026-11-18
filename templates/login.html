@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-style="glass">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Sign In | PrintSafe Cloud {{ app_version }}</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='images/logo3.svg') }}" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/vault_core.css') }}?v=1.0" />
+  </head>
+  <body>
+    {% include 'partials/auth.html' %}
+    {% include 'partials/footer.html' %}
+
+    <div id="vault-toast-box" style="position:fixed;bottom:54px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:8px;"></div>
+
+    <script>
+      (function () {
+        const savedStyle = localStorage.getItem("vault_style_preset") || "glass";
+        document.documentElement.setAttribute("data-style", savedStyle);
+        const savedTheme = localStorage.getItem("vault_theme_pref") || "system";
+        if (savedTheme === "system") {
+          const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          document.documentElement.setAttribute("data-theme", isDark ? "dark" : "light");
+        } else {
+          document.documentElement.setAttribute("data-theme", savedTheme);
+        }
+      })();
+
+      let currentSessionId = null;
+      let activeQRToken = null;
+      let qrPollingInterval = null;
+      let qrVisualCountdownInterval = null;
+      let qrSecondsRemaining = 15;
+      let sessionLoginType = "user_account";
+      let activeRestrictions = {};
+
+      function showToast(msg, type = "info") {
+        const box = document.getElementById("vault-toast-box");
+        if (!box) return;
+        const el = document.createElement("div");
+        const bg = type === "error" ? "#ef4444" : type === "success" ? "#10b981" : "#0f172a";
+        el.style.cssText = `background:${bg};color:#fff;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,0.22);`;
+        el.innerText = msg;
+        box.appendChild(el);
+        setTimeout(() => el.remove(), 3500);
+      }
+
+      async function bootAuthenticatedDashboard(redirectUrl = null) {
+        if (redirectUrl) {
+          window.location.replace(redirectUrl);
+          return;
+        }
+        try {
+          const res = await fetch("/api/check-session?t=" + Date.now());
+          const data = await res.json();
+          if (data.authenticated && data.vault_redirect) {
+            window.location.replace(data.vault_redirect);
+            return;
+          }
+        } catch (e) {}
+        window.location.replace("/");
+      }
+    </script>
+    <script src="{{ url_for('static', filename='js/auth.js') }}?v=2.2"></script>
+  </body>
+</html>

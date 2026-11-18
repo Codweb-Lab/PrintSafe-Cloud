@@ -20,6 +20,18 @@
       <span id="header-connected-count">0</span>
     </button>
 
+    <!-- About App Button -->
+    <button class="connected-devices-pill" onclick="openAboutModal()" title="About PrintSafe Cloud">
+      <i class="ri-information-line" style="color:var(--accent);"></i>
+      <span class="hide-sm-label">About</span>
+    </button>
+
+    <!-- 🔔 NOTIFICATION CENTER BELL -->
+    <button class="connected-devices-pill" onclick="openNotificationCenterModal()" title="Notifications">
+      <i class="ri-notification-3-line" style="color:var(--accent);font-size:15px;"></i>
+      <span id="header-notif-badge" style="background:#ef4444;color:#fff;font-size:10px;padding:1px 6px;border-radius:99px;display:none;">0</span>
+    </button>
+
     <!-- 🎨 MODERN CUSTOM UI DESIGN SYSTEM DROPDOWN -->
     <div class="modern-dropdown" id="dropdown-ui-style">
       <input type="hidden" id="ui-style-selector" value="glass" />
@@ -58,12 +70,18 @@
 
     <!-- 👤 MODERN PROFILE DROPDOWN -->
     <div class="profile-dropdown-wrapper" style="position: relative;">
-      <div class="profile-avatar-pill" onclick="toggleProfileDropdown()">K</div>
+      <div class="profile-avatar-pill" id="header-user-avatar" onclick="toggleProfileDropdown()">U</div>
       
       <div id="profile-menu-dropdown" class="modern-profile-popover" style="display: none;">
         <div style="padding: 10px 12px; border-bottom: 1px solid var(--border); margin-bottom: 6px;">
-          <div style="font-weight: 700; font-size: 13.5px; color: var(--text-title);">Kapil Jangid</div>
-          <div style="font-size: 11px; color: var(--text-sub);">kapil@codweb.lab</div>
+          <div id="dropdown-user-name" style="font-weight: 700; font-size: 13.5px; color: var(--text-title);">User</div>
+          <div id="dropdown-user-email" style="font-size: 11px; color: var(--text-sub);">user@printsafe.cloud</div>
+        </div>
+        <div class="modern-dropdown-item" onclick="openUserProfileModal()">
+          <div class="dd-item-left"><i class="ri-user-settings-line" style="color:var(--accent);"></i> <span>My Profile</span></div>
+        </div>
+        <div class="modern-dropdown-item" onclick="togglePasswordModal(true)">
+          <div class="dd-item-left"><i class="ri-shield-keyhole-line" style="color:#10b981;"></i> <span>Account &amp; 2FA Settings</span></div>
         </div>
         <div class="modern-dropdown-item" onclick="openConnectedDevicesModal(true)">
           <div class="dd-item-left"><i class="ri-computer-line" style="color:#22c55e;"></i> <span>Connected Logins</span></div>
@@ -71,10 +89,10 @@
         <div class="modern-dropdown-item" onclick="openCloudDriveManager(true)">
           <div class="dd-item-left"><i class="ri-cloud-line" style="color:var(--accent);"></i> <span>Cloud Drive Manager</span></div>
         </div>
-        <div class="modern-dropdown-item" onclick="togglePasswordModal(true)">
-          <div class="dd-item-left"><i class="ri-settings-4-line"></i> <span>Master Settings</span></div>
+        <div class="modern-dropdown-item" onclick="openAboutModal()">
+          <div class="dd-item-left"><i class="ri-information-line" style="color:var(--accent);"></i> <span>About PrintSafe Cloud</span></div>
         </div>
-        <div class="modern-dropdown-item" onclick="performLogout()" style="color: #ef4444; border-top: 1px solid var(--border); margin-top: 6px; padding-top: 9px;">
+        <div class="modern-dropdown-item" onclick="confirmLogoutModal()" style="color: #ef4444; border-top: 1px solid var(--border); margin-top: 6px; padding-top: 9px;">
           <div class="dd-item-left"><i class="ri-logout-box-r-line" style="color:#ef4444;"></i> <span>Logout Vault</span></div>
         </div>
       </div>

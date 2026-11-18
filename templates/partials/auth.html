@@ -1,26 +1,157 @@
 <div id="auth-container" class="auth-container">
-  <!-- FRONT: SECRET KEY LOGIN -->
-  <div class="auth-card auth-card-front">
-    <div class="auth-brand-header">
+  <div class="auth-card auth-card-front" style="max-width: 410px;">
+    <div class="auth-brand-header" style="margin-bottom: 14px;">
       <div class="auth-logo-box">
         <img src="{{ url_for('static', filename='images/logo3.svg') }}" alt="PrintSafe Logo" />
       </div>
-      <h2 class="auth-app-title">PrintSafe <span>Cloud</span></h2>
-      <p class="auth-app-subtitle">Zero-Trust Encrypted Document Vault</p>
+      <h2 class="auth-app-title">PrintSafe <span>Cloud</span> <span class="version-pill">{{ app_version }}</span></h2>
+      <p class="auth-app-subtitle">Zero-Trust Cloud &amp; Remote Print Vault</p>
     </div>
 
-    <div class="auth-section-divider">
-      <span>ENTER SECRET KEY</span>
+    <!-- Sign In / Register Switcher -->
+    <div style="display: flex; gap: 6px; background: var(--bg-app); padding: 4px; border-radius: var(--radius-btn); border: 1px solid var(--border); margin-bottom: 14px;">
+      <button type="button" id="tab-user-signin" class="filter-pill active" style="flex:1; justify-content:center;" onclick="switchUserAuthMode('signin')">
+        <i class="ri-login-circle-line"></i> Sign In
+      </button>
+      {% if features.get('user_registration', True) %}
+      <button type="button" id="tab-user-signup" class="filter-pill" style="flex:1; justify-content:center;" onclick="switchUserAuthMode('signup')">
+        <i class="ri-user-add-line"></i> Register
+      </button>
+      {% endif %}
     </div>
 
-    <input type="password" id="secret-key" placeholder="Enter Master Secret Key..." required onkeydown="if(event.key==='Enter') unlockVault()">
-    <button class="primary-submit-btn" onclick="unlockVault()">
-      <i class="ri-lock-unlock-line"></i> Access Vault
-    </button>
-    <p style="font-size: 11.5px; color: var(--text-sub); margin: 14px 0; font-weight: 600;">OR</p>
-    <button class="secondary-btn" onclick="rotateCard(true)">
-      <i class="ri-qr-code-line"></i> Scan QR Instead
-    </button>
+    <!-- PANEL 1: SIGN IN (Email | OTP | PIN) -->
+    <div id="panel-user-signin">
+      <div id="signin-submethods-bar" style="display:flex; gap:5px; margin-bottom:14px;">
+        <button type="button" id="method-btn-email" class="filter-pill active" style="flex:1;justify-content:center;font-size:11.5px;padding:6px;" onclick="setLoginSubMethod('email')">Email</button>
+        <button type="button" id="method-btn-otp" class="filter-pill" style="flex:1;justify-content:center;font-size:11.5px;padding:6px;" onclick="setLoginSubMethod('otp')">OTP</button>
+        <button type="button" id="method-btn-pin" class="filter-pill" style="flex:1;justify-content:center;font-size:11.5px;padding:6px;" onclick="setLoginSubMethod('pin')">PIN</button>
+      </div>
+
+      <!-- Email Flow -->
+      <div id="signin-flow-email">
+        <div id="email-login-step1">
+          <input type="email" id="email-login-email-input" placeholder="Enter your Email Address..." onkeydown="if(event.key==='Enter') verifyEmailForLogin()">
+          <button type="button" id="email-step1-btn" class="primary-submit-btn" onclick="verifyEmailForLogin()">
+            <i class="ri-arrow-right-line"></i> Continue
+          </button>
+        </div>
+        <div id="email-login-step2" style="display: none;">
+          <div style="font-size:11.5px; color:var(--accent); font-weight:700; margin-bottom:8px;">
+            Signing in as <span id="email-verified-label"></span>
+          </div>
+          <input type="password" id="email-login-password-input" placeholder="Enter Account Password..." onkeydown="if(event.key==='Enter') submitUserLogin()">
+          <div style="display:flex; gap:8px;">
+            <button type="button" class="secondary-btn" style="flex:1;" onclick="resetSignInFlows()">Cancel</button>
+            <button type="button" id="email-step2-btn" class="primary-submit-btn" style="flex:1.4;" onclick="submitUserLogin()">Sign In</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- OTP Flow -->
+      <div id="signin-flow-otp" style="display: none;">
+        <div id="otp-login-step1">
+          <input type="email" id="otp-login-email-input" placeholder="Enter Registered Email Address..." onkeydown="if(event.key==='Enter') sendUserSignInOtp()">
+          <button type="button" id="otp-step1-btn" class="primary-submit-btn" onclick="sendUserSignInOtp()">
+            <i class="ri-mail-send-line"></i> Send OTP
+          </button>
+        </div>
+        <div id="otp-login-step2" style="display: none;">
+          <div style="font-size:11.5px; color:var(--accent); font-weight:700; margin-bottom:8px;">
+            OTP sent to <span id="otp-verified-label"></span>
+          </div>
+          <input type="text" id="otp-login-code-input" placeholder="Enter 6-Digit OTP..." maxlength="6" style="text-align:center; letter-spacing:3px; font-weight:700;" onkeydown="if(event.key==='Enter') submitUserLogin()">
+          <div style="display:flex; gap:8px;">
+            <button type="button" class="secondary-btn" style="flex:1;" onclick="resetSignInFlows()">Cancel</button>
+            <button type="button" id="otp-step2-btn" class="primary-submit-btn" style="flex:1.4;" onclick="submitUserLogin()">Verify &amp; Sign In</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- PIN-Only Flow (Clean single button; hides automatically when 2FA step triggers) -->
+      <div id="signin-flow-pin" style="display: none;">
+        <input type="password" id="pin-login-code-input" placeholder="Enter 4 or 6-Digit PIN..." maxlength="6" style="text-align:center; letter-spacing:4px; font-weight:700;" onkeydown="if(event.key==='Enter') submitUserLogin()">
+        <button type="button" id="pin-step1-btn" class="primary-submit-btn" onclick="submitUserLogin()">Sign In with PIN</button>
+      </div>
+
+      <!-- 2FA Code Box (Replaces active Email/OTP/PIN input cleanly when 2FA is required) -->
+      <div id="signin-2fa-box" style="display:none;">
+        <div style="font-size:11.5px; color:var(--accent); font-weight:700; margin-bottom:6px; text-align:left;">
+          <i class="ri-shield-keyhole-line"></i> Enter 6-digit Authenticator Code
+        </div>
+        <input type="text" id="signin-totp-code" placeholder="000000" maxlength="6" style="margin-bottom:10px; text-align:center; letter-spacing:4px; font-weight:700;" onkeydown="if(event.key==='Enter') submitUserLogin()">
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="secondary-btn" style="flex:1;" onclick="resetSignInFlows()">Cancel</button>
+          <button type="button" id="signin-2fa-btn" class="primary-submit-btn" style="flex:1.4;" onclick="submitUserLogin()">Verify 2FA &amp; Sign In</button>
+        </div>
+      </div>
+
+      {% if features.get('google_oauth_login', False) %}
+      <div id="signin-oauth-section">
+        <div class="auth-section-divider"><span>OR CONTINUE WITH</span></div>
+        <a href="/api/auth/google/login" id="signin-google-btn" class="secondary-btn" style="text-decoration:none; margin-bottom:4px;">
+          <i class="ri-google-fill" style="color:#ea4335;"></i> Continue with Google
+        </a>
+      </div>
+      {% endif %}
+
+      {% if features.get('qr_desktop_pairing', True) %}
+      <div id="qr-login-cta-wrapper" class="desktop-only-qr-block">
+        <p style="font-size: 11px; color: var(--text-sub); margin: 10px 0; font-weight: 600;">OR</p>
+        <button type="button" id="signin-qr-btn" class="secondary-btn" onclick="rotateCard(true)">
+          <i class="ri-qr-code-line"></i> Scan QR Instead
+        </button>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- PANEL 2: EMAIL-ONLY REGISTRATION -->
+    <div id="panel-user-signup" style="display: none;">
+      <div class="auth-section-divider"><span>QUICK EMAIL REGISTRATION</span></div>
+
+      <div id="reg-step-1">
+        <input type="email" id="reg-email-input" placeholder="Enter your Email Address..." onkeydown="if(event.key==='Enter') step1SendRegOtp()">
+        <button type="button" id="reg-step1-btn" class="primary-submit-btn" onclick="step1SendRegOtp()">
+          <i class="ri-mail-send-line"></i> Send Verification OTP
+        </button>
+      </div>
+
+      <div id="reg-step-2" style="display: none;">
+        <div style="font-size:11.5px; color:var(--accent); font-weight:600; margin-bottom:8px;">
+          OTP sent to <span id="reg-display-email"></span>
+        </div>
+        <input type="text" id="reg-otp-input" placeholder="Enter 6-Digit Email OTP..." maxlength="6" style="text-align:center; letter-spacing:3px; font-weight:700;" onkeydown="if(event.key==='Enter') step2VerifyRegOtp()">
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="secondary-btn" style="flex:1;" onclick="resetRegisterFlows()">Cancel</button>
+          <button type="button" id="reg-step2-btn" class="primary-submit-btn" style="flex:1.4;" onclick="step2VerifyRegOtp()">
+            <i class="ri-checkbox-circle-line"></i> Verify OTP
+          </button>
+        </div>
+      </div>
+
+      <div id="reg-step-3" style="display: none;">
+        <div style="font-size:11.5px; color:#22c55e; font-weight:700; margin-bottom:8px;">
+          <i class="ri-verified-badge-fill"></i> Email Verified! Set Password &amp; PIN
+        </div>
+        <input type="password" id="reg-pass-input" placeholder="Create Password (min 4 chars)...">
+        <input type="password" id="reg-pin-input" placeholder="Optional 4 or 6-Digit Quick PIN..." maxlength="6" onkeydown="if(event.key==='Enter') step3CompleteRegistration()">
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="secondary-btn" style="flex:1;" onclick="resetRegisterFlows()">Cancel</button>
+          <button type="button" id="reg-step3-btn" class="primary-submit-btn" style="flex:1.4;" onclick="step3CompleteRegistration()">
+            <i class="ri-shield-check-line"></i> Create Account
+          </button>
+        </div>
+      </div>
+
+      {% if features.get('google_oauth_login', False) %}
+      <div id="signup-oauth-section">
+        <div class="auth-section-divider"><span>OR REGISTER WITH OAUTH</span></div>
+        <a href="/api/auth/google/login" id="signup-google-btn" class="secondary-btn" style="text-decoration:none;">
+          <i class="ri-google-fill" style="color:#ea4335;"></i> Sign Up with Google
+        </a>
+      </div>
+      {% endif %}
+    </div>
   </div>
 
   <!-- BACK: QR CODE LOGIN -->
@@ -31,15 +162,9 @@
       </div>
       <h2 class="auth-app-title" style="font-size: 18px;">PrintSafe <span>Cloud</span></h2>
     </div>
-
-    <div class="auth-section-divider">
-      <span>SCAN TO UNLOCK</span>
-    </div>
-
+    <div class="auth-section-divider"><span>SCAN TO UNLOCK</span></div>
     <div id="qr-code-display" style="padding: 12px; background: white; border-radius: var(--radius-card); margin-bottom: 14px; border: 1px solid var(--border); min-height: 205px; display: flex; align-items: center; justify-content: center;"></div>
     <p style="font-size: 11.5px; color: var(--text-sub); margin: 12px 0; font-weight: 600;">OR</p>
-    <button class="secondary-btn" onclick="rotateCard(false)">
-      <i class="ri-key-2-line"></i> Use Secret Key
-    </button>
+    <button type="button" class="secondary-btn" onclick="rotateCard(false)">Back to Sign In</button>
   </div>
 </div>

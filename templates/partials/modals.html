@@ -39,7 +39,7 @@
   </div>
 </div>
 
-<!-- ⚠️ CUSTOM CONFIRMATION MODAL -->
+<!-- ⚠️ CUSTOM CONFIRMATION MODAL (CLOUD REMOVAL) -->
 <div id="confirm-action-modal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(8px); z-index: 10006; align-items: center; justify-content: center; padding: 16px;">
   <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 24px; border-radius: var(--radius-card); width: 100%; max-width: 370px; box-shadow: var(--card-shadow); text-align: center;">
     <div style="width:48px;height:48px;border-radius:var(--radius-btn);background:rgba(239,68,68,0.12);color:#ef4444;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 12px auto;">
@@ -67,18 +67,100 @@
 </div>
 
 <!-- 🔑 SETTINGS MODAL -->
-<div id="passwordModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); backdrop-filter: blur(8px); align-items: center; justify-content: center; z-index: 10000; padding: 16px;">
-  <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 26px; border-radius: var(--radius-card); width: 100%; max-width: 370px; box-shadow: var(--card-shadow);">
-    <h3 style="margin-top: 0; font-weight: 800; display:flex; align-items:center; gap:8px;">
-      <i class="ri-key-2-line" style="color:var(--accent);"></i> Change Master Key
-    </h3>
-    <input type="password" id="currentPassword" placeholder="Current Password" style="width: 100%; padding: 10px 12px; margin-bottom: 12px; border-radius: var(--radius-btn); border: 1px solid var(--border); background: var(--bg-app); color: var(--text-title);">
-    <input type="password" id="newPassword" placeholder="New Password" style="width: 100%; padding: 10px 12px; margin-bottom: 12px; border-radius: var(--radius-btn); border: 1px solid var(--border); background: var(--bg-app); color: var(--text-title);">
-    <input type="password" id="confirmPassword" placeholder="Confirm New Password" style="width: 100%; padding: 10px 12px; margin-bottom: 20px; border-radius: var(--radius-btn); border: 1px solid var(--border); background: var(--bg-app); color: var(--text-title);">
-    <div style="display: flex; justify-content: flex-end; gap: 10px;">
-      <button onclick="togglePasswordModal(false)" style="padding: 9px 16px; border: 1px solid var(--border); background: transparent; border-radius: var(--radius-btn); cursor: pointer; color: var(--text-title); font-weight: 600;">Cancel</button>
-      <button onclick="submitPasswordChange()" style="padding: 9px 16px; border: none; background: var(--accent); color: white; border-radius: var(--radius-btn); cursor: pointer; font-weight: 700;">Update</button>
+<!-- 🔐 USER SECURITY SETTINGS: 2FA AUTHENTICATOR APP & QUICK PIN -->
+<div id="passwordModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); backdrop-filter: blur(8px); align-items: center; justify-content: center; z-index: 10000; padding: 16px;">
+  <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 24px; border-radius: var(--radius-card); width: 100%; max-width: 460px; max-height: 88vh; overflow-y: auto; box-shadow: var(--card-shadow);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <h3 style="margin:0;font-weight:800;font-size:17px;display:flex;align-items:center;gap:8px;">
+        <i class="ri-shield-keyhole-line" style="color:var(--accent);"></i> Security &amp; 2FA Settings
+      </h3>
+      <button onclick="togglePasswordModal(false)" style="background:none;border:none;font-size:20px;color:var(--text-sub);cursor:pointer;"><i class="ri-close-line"></i></button>
     </div>
+
+    <!-- Section 1: Authenticator App 2FA -->
+    <div class="provider-section-card" style="margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div style="font-weight:800;font-size:14px;"><i class="ri-smartphone-line" style="color:#10b981;"></i> Authenticator App 2FA</div>
+        <span id="totp-status-badge" class="version-pill">Checking...</span>
+      </div>
+      <p style="font-size:12px;color:var(--text-sub);margin:0 0 10px;">
+        Protect your account with <strong>Google Authenticator</strong>, <strong>Microsoft Authenticator</strong>, or <strong>Authy</strong>.
+      </p>
+
+      <div id="totp-setup-area" style="display:none; text-align:center; background:var(--surface-card); padding:12px; border-radius:var(--radius-btn); border:1px solid var(--border); margin-bottom:10px;">
+        <img id="totp-qr-img" src="" alt="2FA QR" style="width:160px;height:160px;background:#fff;padding:8px;border-radius:10px;">
+        <div style="font-size:11px;color:var(--text-sub);margin-top:6px;">Manual Key: <code id="totp-secret-code" style="color:var(--accent);font-weight:700;"></code></div>
+        <input type="text" id="totp-verify-input" placeholder="Enter 6-digit code from App..." maxlength="6" style="width:100%;padding:9px;margin:10px 0;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);text-align:center;font-weight:700;">
+        <button onclick="confirmEnable2FA()" class="btn-add-account" style="width:100%;justify-content:center;">Verify &amp; Activate 2FA</button>
+      </div>
+
+      <div style="display:flex;gap:8px;">
+        <button id="btn-start-2fa" onclick="start2FASetup()" class="btn-acc-action primary"><i class="ri-qr-code-line"></i> Setup 2FA</button>
+        <button id="btn-disable-2fa" onclick="disable2FA()" class="btn-acc-action danger" style="display:none;"><i class="ri-close-circle-line"></i> Disable 2FA</button>
+      </div>
+
+      <details style="margin-top:10px;font-size:11.5px;color:var(--text-sub);">
+        <summary style="cursor:pointer;color:var(--accent);font-weight:700;"><i class="ri-book-open-line"></i> 2FA Setup Guide</summary>
+        <ol style="margin:6px 0 0 18px;line-height:1.6;">
+          <li>Install <b>Google Authenticator</b> or <b>Microsoft Authenticator</b> on your phone.</li>
+          <li>Click <b>Setup 2FA</b> above and scan the QR code (or paste the Manual Key).</li>
+          <li>Enter the 6-digit rotating code shown in the app to activate 2FA.</li>
+        </ol>
+      </details>
+    </div>
+
+    <!-- Section 2: Quick Login PIN -->
+    <div class="provider-section-card">
+      <div style="font-weight:800;font-size:14px;margin-bottom:6px;"><i class="ri-dialpad-line" style="color:var(--accent);"></i> Quick Login Security PIN</div>
+      <input type="password" id="user-new-pin-input" placeholder="Enter new 4 or 6-digit PIN..." maxlength="6" style="width:100%;padding:9px 12px;margin-bottom:10px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);">
+      <button onclick="saveUserQuickPin()" class="btn-add-account"><i class="ri-save-line"></i> Save Quick PIN</button>
+    </div>
+  </div>
+</div>
+
+<!-- 🌐 HOSTING PROVIDER STORAGE (SSH/SFTP & FTP) MODAL -->
+<div id="remote-storage-modal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px); z-index: 10014; align-items: center; justify-content: center; padding: 16px;">
+  <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 24px; border-radius: var(--radius-card); width: 100%; max-width: 560px; max-height: 88vh; overflow-y: auto; box-shadow: var(--card-shadow);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <h3 style="margin:0;font-size:17px;display:flex;align-items:center;gap:8px;">
+        <i class="ri-server-line" style="color:var(--accent);"></i> Connect Hosting Storage (SSH/SFTP &amp; FTP)
+      </h3>
+      <button onclick="document.getElementById('remote-storage-modal').style.display='none'" style="background:none;border:none;font-size:20px;color:var(--text-sub);cursor:pointer;"><i class="ri-close-line"></i></button>
+    </div>
+    <p style="font-size:12px;color:var(--text-sub);margin:0 0 12px;">
+      Mount storage from your web hosting provider (cPanel, VPS, Hostinger, DigitalOcean) via SFTP or FTP.
+    </p>
+
+    <div class="provider-section-card" style="margin-bottom:14px;">
+      <div style="display:flex;gap:8px;margin-bottom:8px;">
+        <select id="rem-protocol" style="padding:9px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);font-weight:700;">
+          <option value="sftp">SFTP (SSH - Port 22)</option>
+          <option value="ftp">FTP (Port 21)</option>
+        </select>
+        <input type="text" id="rem-label" placeholder="Storage Label (e.g. My VPS Vault)" style="flex:1;padding:9px 12px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);">
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:8px;">
+        <input type="text" id="rem-host" placeholder="Host / IP (e.g. sftp.example.com)" style="flex:2;padding:9px 12px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);">
+        <input type="number" id="rem-port" placeholder="Port (22)" value="22" style="width:90px;padding:9px 10px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);">
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:8px;">
+        <input type="text" id="rem-user" placeholder="SSH / FTP Username" style="flex:1;padding:9px 12px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);">
+        <input type="password" id="rem-pass" placeholder="Password" style="flex:1;padding:9px 12px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);">
+      </div>
+      <input type="text" id="rem-path" placeholder="Remote Folder Path (e.g. /home/user/docs)" value="/" style="width:100%;padding:9px 12px;margin-bottom:10px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);">
+      <button onclick="connectHostingStorage()" class="btn-add-account"><i class="ri-plug-line"></i> Test &amp; Mount Storage</button>
+
+      <details style="margin-top:10px;font-size:11.5px;color:var(--text-sub);">
+        <summary style="cursor:pointer;color:var(--accent);font-weight:700;"><i class="ri-book-open-line"></i> Hosting SSH/SFTP &amp; FTP Setup Guide</summary>
+        <ul style="margin:6px 0 0 18px;line-height:1.6;">
+          <li><b>SFTP (Recommended):</b> Use your cPanel/VPS SSH host, port <code>22</code>, and SSH username/password.</li>
+          <li><b>FTP:</b> Create an FTP account in your hosting panel, use port <code>21</code>, and set the directory path.</li>
+          <li>Files are streamed directly in memory for viewing/printing—nothing is stored on our servers.</li>
+        </ul>
+      </details>
+    </div>
+
+    <div id="connected-remote-storages-list" style="display:flex;flex-direction:column;gap:8px;"></div>
   </div>
 </div>
 
@@ -100,22 +182,104 @@
   </div>
 </div>
 
-<!-- ☁️ CLOUD PICKER MODAL -->
-<div id="cloud-picker-modal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.65); backdrop-filter: blur(8px); z-index: 10000; align-items: center; justify-content: center; padding: 16px;">
-  <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 22px; border-radius: var(--radius-card); width: 100%; max-width: 660px; height: 80vh; display: flex; flex-direction: column; box-shadow: var(--card-shadow);">
-    <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 12px;">
-      <h3 id="cloud-picker-title" style="margin: 0; font-size: 16.5px; font-weight: 700; display:flex; align-items:center; gap:8px;">
-        <i class="ri-folder-cloud-line" style="color:var(--accent);"></i> Cloud Browser
-      </h3>
-      <button onclick="closeCloudPickerModal()" style="background: none; border: none; font-size: 20px; color: var(--text-sub); cursor: pointer;">
-        <i class="ri-close-line"></i>
+<!-- ☁️ CLOUD DRIVE BROWSE & PICKER MODAL -->
+<div id="cloud-picker-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:9999; align-items:center; justify-content:center; padding:16px;">
+  <div style="background:var(--surface-card); border:1px solid var(--border); border-radius:var(--radius-card); width:100%; max-width:640px; max-height:85vh; display:flex; flex-direction:column; overflow:hidden; box-shadow:var(--dropdown-shadow);">
+    
+    <!-- Modal Header -->
+    <div style="padding:16px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between;">
+      <h3 id="cloud-picker-title" style="margin:0; font-size:16px; font-weight:700; display:flex; align-items:center; gap:8px;">Cloud Drive Explorer</h3>
+      <button onclick="closeCloudPickerModal()" style="background:none; border:none; font-size:18px; color:var(--text-sub); cursor:pointer;"><i class="ri-close-line"></i></button>
+    </div>
+
+    <!-- Breadcrumb Bar -->
+    <div id="cloud-picker-breadcrumb-bar" style="display:flex; align-items:center; justify-content:space-between; padding:10px 16px; background:var(--bg-app); border-bottom:1px solid var(--border); gap:8px;">
+      <div id="cloud-picker-breadcrumbs" style="display:flex; align-items:center; gap:4px; font-size:12.5px; font-weight:700; overflow-x:auto; white-space:nowrap;"></div>
+      <button id="cloud-picker-back-btn" onclick="navigateCloudPickerBack()" class="btn-acc-action" style="display:none; flex-shrink:0;">
+        <i class="ri-arrow-left-line"></i> Back
       </button>
     </div>
-    <div id="cloud-breadcrumb" style="font-size: 12.5px; color: var(--accent); font-weight: 600; margin-bottom: 10px; background: var(--accent-soft); padding: 8px 12px; border-radius: var(--radius-btn); display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-      Root
+
+    <!-- Content List Container -->
+    <div id="cloud-picker-list" style="flex:1; overflow-y:auto; padding:8px 0; min-height:280px;"></div>
+
+  </div>
+</div>
+
+<!-- ℹ️ ABOUT PRINTSAFE CLOUD MODAL -->
+<div id="about-app-modal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(8px); z-index: 10010; align-items: center; justify-content: center; padding: 16px;">
+  <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 24px; border-radius: var(--radius-card); width: 100%; max-width: 460px; box-shadow: var(--card-shadow);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <img src="{{ url_for('static', filename='images/logo3.svg') }}" alt="Logo" style="width:28px;height:28px;">
+        <h3 style="margin:0;font-size:17px;">PrintSafe <span style="color:var(--accent);">Cloud</span> <span class="version-pill">{{ app_version }}</span></h3>
+      </div>
+      <button onclick="closeAboutModal()" style="background:none;border:none;font-size:20px;color:var(--text-sub);cursor:pointer;"><i class="ri-close-line"></i></button>
     </div>
-    <div id="cloud-picker-list" style="flex: 1; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-btn); padding: 10px;"></div>
+    <p style="font-size:13px;color:var(--text-sub);line-height:1.6;margin-top:0;">
+      <strong>PrintSafe Cloud</strong> is a Zero-Trust Encrypted Document Vault & Remote Print Station engineered for zero-footprint document viewing and printing on shared computers.
+    </p>
+    <div style="background:var(--bg-app);border:1px solid var(--border);border-radius:var(--radius-btn);padding:12px;font-size:12.5px;color:var(--text-title);line-height:1.6;margin:12px 0;">
+      <div><i class="ri-printer-line" style="color:var(--accent);"></i> <strong>Zero-Trace Vector Print:</strong> Stream and print PDFs/images without leaving local downloads.</div>
+      <div><i class="ri-qr-scan-2-line" style="color:#22c55e;"></i> <strong>QR Desktop Guard:</strong> Pair desktops via mobile QR with live masking & session termination.</div>
+      <div><i class="ri-cloud-line" style="color:#38bdf8;"></i> <strong>Multi-Cloud Bridge:</strong> Mount Google Drive & OneDrive accounts seamlessly.</div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-sub);border-top:1px solid var(--border);padding-top:10px;">
+      <span>Developed by <strong>Kapil Jangid @Codweb Lab</strong></span>
+      <span>{{ app_version }}</span>
+    </div>
+  </div>
+</div>
+
+<!-- ⚠️ LOGOUT & DISCONNECT DESKTOP CONFIRMATION MODAL -->
+<div id="session-confirm-modal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px); z-index: 10015; align-items: center; justify-content: center; padding: 16px;">
+  <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 24px; border-radius: var(--radius-card); width: 100%; max-width: 375px; box-shadow: var(--card-shadow); text-align: center;">
+    <div style="width:48px;height:48px;border-radius:var(--radius-btn);background:rgba(239,68,68,0.12);color:#ef4444;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 12px auto;">
+      <i class="ri-shield-user-line"></i>
+    </div>
+    <h3 id="session-confirm-title" style="margin:0 0 8px 0;font-size:16px;">Confirm Action</h3>
+    <p id="session-confirm-msg" style="font-size:12.5px;color:var(--text-sub);margin-bottom:20px;line-height:1.5;"></p>
+    <div style="display:flex;justify-content:center;gap:10px;">
+      <button onclick="closeSessionConfirmModal()" style="flex:1;padding:9px 14px;border:1px solid var(--border);background:transparent;border-radius:var(--radius-btn);cursor:pointer;color:var(--text-title);font-weight:600;">Cancel</button>
+      <button id="session-confirm-btn" style="flex:1;padding:9px 14px;border:none;background:#ef4444;color:white;border-radius:var(--radius-btn);cursor:pointer;font-weight:700;">Confirm</button>
+    </div>
   </div>
 </div>
 
 <div id="custom-toast-container" style="position: fixed; bottom: 52px; left: 50%; transform: translateX(-50%); z-index: 100005; display: flex; flex-direction: column-reverse; gap: 8px; align-items: center; width: 100%; max-width: 420px; pointer-events: none;"></div>
+
+<!-- 🔔 USER NOTIFICATION CENTER MODAL -->
+<div id="notification-center-modal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(8px); z-index: 10020; align-items: center; justify-content: center; padding: 16px;">
+  <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 22px; border-radius: var(--radius-card); width: 100%; max-width: 460px; max-height: 82vh; display: flex; flex-direction: column; box-shadow: var(--card-shadow);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <h3 style="margin:0;font-size:16.5px;display:flex;align-items:center;gap:8px;">
+        <i class="ri-notification-3-fill" style="color:var(--accent);"></i> Notification Center
+      </h3>
+      <button onclick="document.getElementById('notification-center-modal').style.display='none'" style="background:none;border:none;font-size:20px;color:var(--text-sub);cursor:pointer;"><i class="ri-close-line"></i></button>
+    </div>
+    <div id="notifications-list-container" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px;"></div>
+  </div>
+</div>
+
+<!-- 👤 USER PROFILE UPDATE MODAL (POST-LOGIN) -->
+<div id="user-profile-modal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(8px); z-index: 10021; align-items: center; justify-content: center; padding: 16px;">
+  <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 24px; border-radius: var(--radius-card); width: 100%; max-width: 420px; box-shadow: var(--card-shadow);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <h3 style="margin:0;font-size:17px;display:flex;align-items:center;gap:8px;">
+        <i class="ri-user-settings-line" style="color:var(--accent);"></i> Update Profile Details
+      </h3>
+      <button onclick="document.getElementById('user-profile-modal').style.display='none'" style="background:none;border:none;font-size:20px;color:var(--text-sub);cursor:pointer;"><i class="ri-close-line"></i></button>
+    </div>
+    <label style="font-size:11.5px;font-weight:700;color:var(--text-sub);">Email (Verified)</label>
+    <input type="text" id="prof-email-readonly" disabled style="width:100%;padding:9px 12px;margin:4px 0 10px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-sub);opacity:0.75;">
+    <label style="font-size:11.5px;font-weight:700;color:var(--text-sub);">Full Name</label>
+    <input type="text" id="prof-full-name" placeholder="Enter your full name..." style="width:100%;padding:9px 12px;margin:4px 0 10px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);">
+    <label style="font-size:11.5px;font-weight:700;color:var(--text-sub);">Phone Number</label>
+    <input type="text" id="prof-phone" placeholder="Optional phone number..." style="width:100%;padding:9px 12px;margin:4px 0 10px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);">
+    <label style="font-size:11.5px;font-weight:700;color:var(--text-sub);">Bio / Organization</label>
+    <input type="text" id="prof-bio" placeholder="e.g. Student / Designer / Developer" style="width:100%;padding:9px 12px;margin:4px 0 16px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);">
+    <button onclick="saveUserProfileDetails()" class="btn-add-account" style="width:100%;justify-content:center;padding:11px;">
+      <i class="ri-save-3-line"></i> Save Profile
+    </button>
+  </div>
+</div>

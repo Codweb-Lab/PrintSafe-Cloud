@@ -5,57 +5,61 @@
     <div class="rail-brand-left">
       <img src="{{ url_for('static', filename='images/logo3.svg') }}" alt="Logo" />
       <span>PrintSafe Cloud</span>
+      <span class="version-pill">{{ app_version }}</span>
     </div>
-    <button class="mobile-close-sidebar" onclick="toggleMobileSidebar(false)"><i class="ri-close-line"></i></button>
+    <div style="display:flex;align-items:center;gap:4px;">
+      <button type="button" onclick="openAboutModal()" title="About PrintSafe Cloud" style="background:none;border:none;color:var(--text-sub);cursor:pointer;font-size:16px;padding:4px;">
+        <i class="ri-information-line"></i>
+      </button>
+      <button class="mobile-close-sidebar" onclick="toggleMobileSidebar(false)"><i class="ri-close-line"></i></button>
+    </div>
   </div>
 
   <nav class="rail-nav-list">
     <div class="rail-section-label">Storage Explorer</div>
-    <button class="rail-btn active" onclick="currentFolderNavigation=[]; applyQuickTypeFilter('all', document.querySelector('.filter-pill')); toggleMobileSidebar(false);">
+    <button id="nav-all-vault-btn" class="rail-btn active" onclick="filterVaultByAccount('all', null, this); toggleMobileSidebar(false);">
       <span class="rail-btn-left"><i class="ri-folder-shield-2-line"></i> All Vault Files</span>
     </button>
+
+    <!-- Google Drive Expandable Provider Group -->
+    <div class="sidebar-provider-group master-only-nav">
+      <button class="rail-btn" onclick="toggleSidebarProviderDrawer('google')">
+        <span class="rail-btn-left"><i class="ri-google-fill" style="color:#ea4335;"></i> Google Drive</span>
+        <span style="display:flex;align-items:center;gap:6px;">
+          <span class="queue-count-badge" id="sidebar-google-count">0</span>
+          <i class="ri-arrow-down-s-line" id="sidebar-arrow-google" style="transition:0.2s;"></i>
+        </span>
+      </button>
+      <div id="sidebar-accounts-google" class="sidebar-nested-accounts"></div>
+    </div>
+
+    <!-- Microsoft OneDrive Expandable Provider Group -->
+    <div class="sidebar-provider-group master-only-nav">
+      <button class="rail-btn" onclick="toggleSidebarProviderDrawer('onedrive')">
+        <span class="rail-btn-left"><i class="ri-microsoft-fill" style="color:#0078d4;"></i> OneDrive</span>
+        <span style="display:flex;align-items:center;gap:6px;">
+          <span class="queue-count-badge" id="sidebar-onedrive-count">0</span>
+          <i class="ri-arrow-down-s-line" id="sidebar-arrow-onedrive" style="transition:0.2s;"></i>
+        </span>
+      </button>
+      <div id="sidebar-accounts-onedrive" class="sidebar-nested-accounts"></div>
+    </div>
 
     <button class="rail-btn" onclick="openPrintQueueView(); toggleMobileSidebar(false);">
       <span class="rail-btn-left"><i class="ri-printer-cloud-line"></i> To Be Printed</span>
       <span class="queue-count-badge" id="sidebar-print-queue-count">0</span>
     </button>
 
-    <!-- Collapsible Cloud Providers & Nested Connected Accounts -->
-    <div class="rail-section-label master-only-nav">Connected Cloud Drives</div>
-
-    <!-- Google Drive Tree -->
-    <div class="sidebar-provider-group master-only-nav">
-      <button class="rail-btn" onclick="toggleSidebarProviderDrawer('google')">
-        <span class="rail-btn-left">
-          <i class="ri-google-fill" style="color:#ea4335;"></i> Google Drive
-        </span>
-        <span style="display:flex;align-items:center;gap:6px;">
-          <span class="queue-count-badge" id="sidebar-google-count">0</span>
-          <i class="ri-arrow-down-s-line" id="sidebar-arrow-google"></i>
-        </span>
-      </button>
-      <div id="sidebar-accounts-google" class="sidebar-nested-accounts"></div>
-    </div>
-
-    <!-- OneDrive Tree -->
-    <div class="sidebar-provider-group master-only-nav">
-      <button class="rail-btn" onclick="toggleSidebarProviderDrawer('onedrive')">
-        <span class="rail-btn-left">
-          <i class="ri-microsoft-fill" style="color:#0078d4;"></i> OneDrive
-        </span>
-        <span style="display:flex;align-items:center;gap:6px;">
-          <span class="queue-count-badge" id="sidebar-onedrive-count">0</span>
-          <i class="ri-arrow-down-s-line" id="sidebar-arrow-onedrive"></i>
-        </span>
-      </button>
-      <div id="sidebar-accounts-onedrive" class="sidebar-nested-accounts"></div>
-    </div>
-
+    <div class="rail-section-label master-only-nav">Cloud &amp; Hosting</div>
     <button class="rail-btn master-only-nav" onclick="openCloudDriveManager(true); toggleMobileSidebar(false);">
-      <span class="rail-btn-left"><i class="ri-Equalizer-line"></i> Cloud Drive Manager</span>
+      <span class="rail-btn-left"><i class="ri-equalizer-line"></i> Cloud Drive Manager</span>
     </button>
 
-    <div class="rail-section-label master-only-nav">Security & Devices</div>
+    <button class="rail-btn master-only-nav" onclick="openRemoteStorageModal(); toggleMobileSidebar(false);">
+      <span class="rail-btn-left"><i class="ri-server-line" style="color:#38bdf8;"></i> Hosting Storage (SFTP/FTP)</span>
+    </button>
+
+    <div class="rail-section-label master-only-nav">Security &amp; Devices</div>
     <button class="rail-btn master-only-nav" onclick="openConnectedDevicesModal(true); toggleMobileSidebar(false);">
       <span class="rail-btn-left"><i class="ri-computer-line"></i> Connected Logins</span>
     </button>
@@ -65,7 +69,7 @@
   </nav>
 
   <div style="border-top: 1px solid var(--border); padding-top: 14px; display: flex; flex-direction: column; gap: 6px;">
-    <button class="rail-btn" style="color: #ef4444;" onclick="performLogout()">
+    <button class="rail-btn" style="color: #ef4444;" onclick="confirmLogoutModal()">
       <span class="rail-btn-left"><i class="ri-logout-box-r-line"></i> Logout Vault</span>
     </button>
   </div>
