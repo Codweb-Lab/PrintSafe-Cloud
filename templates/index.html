@@ -10,6 +10,35 @@
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet" />
     <link rel="stylesheet" href="{{ url_for('static', filename='css/vault_core.css') }}?v=1.0" />
+    <style>
+      /* Standalone Right-Side Cloud Drive Explorer Drawer (Topbar to Footer Full Height) */
+      #cloud-picker-drawer {
+        display: none;
+        position: fixed;
+        top: 62px; /* Touches bottom of top header */
+        bottom: 38px; /* Touches top of global footer */
+        right: 0;
+        width: 410px;
+        max-width: 100vw;
+        background: var(--surface-card);
+        border-left: 1px solid var(--border);
+        box-shadow: -8px 0 28px rgba(15, 23, 42, 0.14);
+        z-index: 9400;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      #cloud-picker-drawer.open {
+        display: flex;
+      }
+      @media (max-width: 768px) {
+        #cloud-picker-drawer {
+          width: 100%;
+          top: 58px;
+          bottom: 38px;
+          z-index: 9600;
+        }
+      }
+    </style>
   </head>
   <body>
     <div id="app-wrapper">
@@ -88,6 +117,7 @@
             <div class="file-grid" id="main-explorer-grid"></div>
           </div>
 
+          <!-- Independent Document Vector Preview Pane -->
           <div class="integrated-preview-column">
             <div id="integrated-preview-pane" style="height: 100%; display: flex; flex-direction: column;">
               <div class="preview-header">
@@ -115,13 +145,36 @@
               <i class="ri-qr-scan-2-line"></i>
             </button>
 
-            <button id="floating-upload-fab" class="fab-action-btn upload" onclick="document.getElementById('vault-file-uploader').click()" title="Upload Files to Current Folder">
+            <button id="floating-upload-fab" class="fab-action-btn upload" style="display: none;" onclick="document.getElementById('vault-file-uploader').click()" title="Upload Files to Current Folder">
               <i class="ri-upload-cloud-2-fill" style="font-size:19px;"></i>
-              <span class="fab-label">Upload Here</span>
+              <span class="fab-label" id="floating-upload-label">Upload Here</span>
             </button>
           </div>
         </div>
       </main>
+
+      <!-- Standalone Full-Height Right-Side Cloud Drive Explorer Drawer (Topbar to Footer) -->
+      <aside id="cloud-picker-drawer">
+        <div class="preview-header" style="flex-shrink: 0;">
+          <div class="preview-title" id="cloud-picker-title" style="display:flex; align-items:center; gap:8px;">
+            <i class="ri-cloud-line" style="color:var(--accent);"></i> Cloud Drive Explorer
+          </div>
+          <div class="preview-actions">
+            <button id="cloud-picker-back-btn" class="btn-action-view" onclick="navigateCloudPickerBack()" style="display:none;">
+              <i class="ri-arrow-left-line"></i> Back
+            </button>
+            <button class="btn-action-view" onclick="closeCloudPickerModal()" style="color:#ef4444;">
+              <i class="ri-close-line"></i> Close
+            </button>
+          </div>
+        </div>
+
+        <div id="cloud-picker-breadcrumb-bar" style="display:flex; align-items:center; justify-content:space-between; padding:10px 16px; background:var(--bg-app); border-bottom:1px solid var(--border); gap:8px; flex-shrink:0;">
+          <div id="cloud-picker-breadcrumbs" style="display:flex; align-items:center; gap:4px; font-size:12.5px; font-weight:700; overflow-x:auto; white-space:nowrap;"></div>
+        </div>
+
+        <div class="preview-body-scroll" id="cloud-picker-list" style="flex:1; overflow-y:auto; padding:0;"></div>
+      </aside>
     </div>
 
     <!-- 4. Modular Overlays & Modals -->
@@ -133,9 +186,9 @@
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="{{ url_for('static', filename='js/pdf.min.js') }}"></script>
     <script src="{{ url_for('static', filename='js/state.js') }}?v=1.0"></script>
-    <script src="{{ url_for('static', filename='js/auth.js') }}?v=2.2"></script>
-    <script src="{{ url_for('static', filename='js/explorer.js') }}?v=1.0"></script>
+    <script src="{{ url_for('static', filename='js/auth.js') }}?v=2.3"></script>
+    <script src="{{ url_for('static', filename='js/explorer.js') }}?v=2.0"></script>
     <script src="{{ url_for('static', filename='js/preview.js') }}?v=1.0"></script>
-    <script src="{{ url_for('static', filename='js/cloud_admin.js') }}?v=2.2"></script>
+    <script src="{{ url_for('static', filename='js/cloud_admin.js') }}?v=2.8"></script>
   </body>
 </html>

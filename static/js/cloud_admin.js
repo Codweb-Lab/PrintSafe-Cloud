@@ -30,6 +30,31 @@ function setSidebarCloudLoadingState(isLoading) {
   });
 }
 
+function updateUploadButtonVisibility() {
+  const uploadFab = document.getElementById("floating-upload-fab");
+  const uploadLabel = document.getElementById("floating-upload-label");
+  if (!uploadFab) return;
+
+  const isRestricted = sessionLoginType === "qr_restricted" || activeRestrictions.is_restricted;
+  const folderCtx = typeof getActiveUploadFolderContext === "function" ? getActiveUploadFolderContext() : null;
+
+  // Show upload button ONLY when user is inside an active mounted Cloud or SFTP/FTP folder (never on Root Vault)
+  const canUpload = !isRestricted && Boolean(folderCtx) && !folderCtx.is_expired && (
+    Boolean(folderCtx.storage_id) || (Boolean(folderCtx.cloud_id) && Boolean(folderCtx.account_id))
+  );
+
+  uploadFab.style.display = canUpload ? "flex" : "none";
+  if (canUpload && uploadLabel) {
+    uploadLabel.innerText = `Upload to ${folderCtx.name}`;
+  }
+}
+
+function getCloudAccountDisplayLabel(acc) {
+  const custom = (acc.custom_name || "").trim();
+  if (custom) return custom;
+  return (acc.email || acc.account_id || "Connected Drive").trim();
+}
+
 // ========================================================================
 // 🚀 DASHBOARD BOOTSTRAP & USER HEADER HYDRATION (INSTANT <200ms BOOT)
 // ========================================================================
@@ -56,7 +81,6 @@ async function bootAuthenticatedDashboard() {
     if (document.getElementById("dropdown-user-email")) document.getElementById("dropdown-user-email").innerText = displayEmail;
     if (document.getElementById("header-user-avatar")) document.getElementById("header-user-avatar").innerText = displayName.charAt(0).toUpperCase();
 
-    // 1. Instant Dashboard Unlock + Lock Sidebar Drives
     const authBox = document.getElementById("auth-container");
     const dashBox = document.getElementById("file-manager-dashboard");
     if (authBox) authBox.style.display = "none";
@@ -67,7 +91,6 @@ async function bootAuthenticatedDashboard() {
     initializeMobileScannerFeatures();
     startBackgroundSyncAndRestrictionMonitor();
 
-    // 2. Full-Area Vault Loading Spinner Inside #main-explorer-grid
     const gridEl = document.getElementById("main-explorer-grid");
     if (gridEl) {
       gridEl.style.display = "flex";
@@ -82,7 +105,6 @@ async function bootAuthenticatedDashboard() {
         </div>`;
     }
 
-    // 3. Parallel Background Sync & Render Vault
     Promise.allSettled([
       loadPrintQueue(),
       loadConnectedCloudAccounts().finally(() => setSidebarCloudLoadingState(false)),
@@ -125,8 +147,7 @@ function applyLiveRestrictionsUI() {
   const badge = document.getElementById("restricted-mode-indicator");
   if (badge) badge.style.display = isRestricted ? "inline-flex" : "none";
 
-  const uploadFab = document.getElementById("floating-upload-fab");
-  if (uploadFab) uploadFab.style.display = isRestricted ? "none" : "flex";
+  updateUploadButtonVisibility();
 
   document.querySelectorAll(".master-only-nav").forEach((btn) => {
     btn.style.display = isRestricted ? "none" : "";
@@ -507,6 +528,7 @@ async function loadConnectedCloudAccounts() {
     connectedAccountsList = data.accounts || [];
     updateCloudSummaryBadges();
     renderMultiCloudManagerUI();
+    updateUploadButtonVisibility();
   } catch (e) {}
 }
 
@@ -544,20 +566,29 @@ function renderSidebarProviderTree(provider, accounts) {
   container.innerHTML =
     accounts
       .map((acc) => {
-        const statusClass = acc.is_expired ? "expired" : acc.is_enabled ? "online" : "disabled";
-        const label = acc.custom_name || acc.email;
+        const isEnabled = Boolean(acc.is_enabled);
+        const statusClass = acc.is_expired ? "expired" : isEnabled ? "online" : "disabled";
+        const label = getCloudAccountDisplayLabel(acc);
         const safeLabel = label.replace(/'/g, "\\'");
         const isActiveFilter = window.activeAccountFilterId === acc.account_id;
+
+        const actionBtnHtml = !isEnabled
+          ? ""
+          : acc.is_expired
+          ? `<button onclick="startDirectOAuthReconnect('${provider}', '${safeLabel}')" style="background:none;border:none;color:#ef4444;cursor:pointer;padding:2px 4px;" title="Reconnect Expired Drive">
+               <i class="ri-plug-line" style="font-size:14px;"></i>
+             </button>`
+          : `<button onclick="openAccountPickerModal('${acc.account_id}', '${safeLabel}', '${provider}'); toggleMobileSidebar(false);" style="background:none;border:none;color:var(--accent);cursor:pointer;padding:2px 4px;" title="Browse & Mount Folders">
+               <i class="ri-folder-add-line" style="font-size:14px;"></i>
+             </button>`;
 
         return `
       <div class="nested-acc-item ${isActiveFilter ? "active" : ""}" style="${isActiveFilter ? "background:var(--accent-soft);color:var(--accent);font-weight:700;" : ""}">
         <div onclick="filterVaultByAccount('${provider}', '${acc.account_id}', this); toggleMobileSidebar(false);" style="display:flex;align-items:center;gap:8px;overflow:hidden;flex:1;cursor:pointer;" title="Show mounted files from ${label}">
           <span class="nested-acc-dot ${statusClass}"></span>
-          <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${label}</span>
+          <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${!isEnabled ? "opacity:0.65;" : ""}">${label}</span>
         </div>
-        <button onclick="${acc.is_expired ? `startDirectOAuthReconnect('${provider}', '${safeLabel}')` : `openAccountPickerModal('${acc.account_id}', '${safeLabel}', '${provider}')`}" style="background:none;border:none;color:var(--accent);cursor:pointer;padding:2px 4px;" title="${acc.is_expired ? "Reconnect Drive" : "Browse & Mount Folders"}">
-          <i class="${acc.is_expired ? "ri-plug-line" : "ri-folder-add-line"}" style="font-size:14px;"></i>
-        </button>
+        ${actionBtnHtml}
       </div>`;
       })
       .join("") +
@@ -592,20 +623,29 @@ function renderMultiCloudManagerUI() {
           ? `<div style="font-size:12px;color:var(--text-sub);padding:8px 4px;">No accounts linked yet.</div>`
           : pAccounts
               .map((acc) => {
-                const label = acc.custom_name || acc.email;
+                const isEnabled = Boolean(acc.is_enabled);
+                const label = getCloudAccountDisplayLabel(acc);
                 const safeLabel = label.replace(/'/g, "\\'");
+                const safeRawCustom = (acc.custom_name || "").replace(/'/g, "\\'");
+                const subText = acc.email || acc.account_id;
+
+                const browseBtnHtml = isEnabled
+                  ? `<button onclick="openAccountPickerModal('${acc.account_id}', '${safeLabel}', '${acc.provider}')" class="btn-acc-action primary"><i class="ri-folder-open-line"></i> Browse</button>`
+                  : "";
+
                 return `
         <div class="cloud-acc-row">
           <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
-            <label class="switch-toggle"><input type="checkbox" ${acc.is_enabled ? "checked" : ""} onchange="toggleCloudAccountState('${acc.account_id}', this.checked)"><span class="slider"></span></label>
-            <div style="overflow:hidden;">
-              <div style="font-weight:700;font-size:13px;">${label}</div>
-              <div style="font-size:11px;color:var(--text-sub);">${acc.email}</div>
+            <label class="switch-toggle"><input type="checkbox" ${isEnabled ? "checked" : ""} onchange="toggleCloudAccountState('${acc.account_id}', this.checked)"><span class="slider"></span></label>
+            <div style="overflow:hidden;${!isEnabled ? "opacity:0.65;" : ""}">
+              <div style="font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${label}</div>
+              <div style="font-size:11px;color:var(--text-sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${subText}</div>
             </div>
           </div>
-          <div style="display:flex;align-items:center;gap:6px;">
-            <button onclick="openAccountPickerModal('${acc.account_id}', '${safeLabel}', '${acc.provider}')" class="btn-acc-action primary"><i class="ri-folder-open-line"></i> Browse</button>
-            <button onclick="openDeleteAccountConfirmModal('${acc.account_id}', '${safeLabel}')" class="btn-acc-action danger"><i class="ri-delete-bin-line"></i></button>
+          <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+            <button onclick="openCloudAccountFormModal('rename', '${acc.provider}', '${acc.account_id}', '${safeRawCustom}')" class="btn-acc-action" title="Rename Drive Label"><i class="ri-edit-2-line"></i> Rename</button>
+            ${browseBtnHtml}
+            <button onclick="openDeleteAccountConfirmModal('${acc.account_id}', '${safeLabel}')" class="btn-acc-action danger" title="Disconnect"><i class="ri-delete-bin-line"></i></button>
           </div>
         </div>`;
               })
@@ -624,41 +664,43 @@ function renderMultiCloudManagerUI() {
 }
 
 // ========================================================================
-// ☁️ CLOUD ACCOUNT OAUTH & LOADING STATUS
+// ☁️ MODAL-BASED ADD & RENAME CLOUD ACCOUNT FLOW (NO JS PROMPT)
 // ========================================================================
-function openCloudAccountFormModal(mode, provider) {
-  const name = prompt(`Enter a custom display name for this ${provider.toUpperCase()} account (Optional):`, "");
-  if (name === null) return;
+function openCloudAccountFormModal(mode, provider, accountId = "", currentCustomName = "") {
+  accountFormState = { mode, provider, accountId };
 
-  showToast(`Connecting to ${provider.toUpperCase()}... Please authorize in the popup window.`, "info");
+  const modal = document.getElementById("cloud-account-form-modal");
+  const titleEl = document.getElementById("cloud-account-form-title");
+  const descEl = document.getElementById("cloud-account-form-desc");
+  const inputEl = document.getElementById("cloud-account-custom-name-input");
+  const submitBtn = document.getElementById("cloud-account-form-submit-btn");
 
-  fetch(`/api/cloud/oauth-url/${provider}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ custom_name: name })
-  })
-    .then((res) => res.json())
-    .then((data) => {
-      if (data.auth_url) {
-        const width = 500, height = 650;
-        const left = window.screenX + (window.innerWidth - width) / 2;
-        const top = window.screenY + (window.innerHeight - height) / 2;
-        const authWindow = window.open(data.auth_url, "CloudOAuth", `width=${width},height=${height},left=${left},top=${top}`);
+  const providerLabel = provider === "google" ? "Google Drive" : "Microsoft OneDrive";
 
-        const pollTimer = setInterval(async () => {
-          if (!authWindow || authWindow.closed) {
-            clearInterval(pollTimer);
-            showToast("Verifying and syncing cloud accounts...", "info");
-            await loadConnectedCloudAccounts();
-            await bootAuthenticatedDashboard();
-            showToast("Cloud account connected & synced successfully!", "success");
-          }
-        }, 1000);
-      } else {
-        showToast(data.error || "Could not generate auth URL", "error");
-      }
-    })
-    .catch(() => showToast("Network error initiating cloud connection", "error"));
+  if (mode === "rename") {
+    if (titleEl) {
+      titleEl.innerHTML = `<i class="ri-edit-2-line" style="color:var(--accent);"></i> Rename ${providerLabel} Label`;
+    }
+    if (descEl) {
+      descEl.innerText = "Set a custom display label for this connected drive. Leave blank to restore its default account email/ID.";
+    }
+    if (inputEl) inputEl.value = currentCustomName || "";
+    if (submitBtn) submitBtn.innerHTML = `<i class="ri-save-line"></i> Save Label`;
+  } else {
+    if (titleEl) {
+      titleEl.innerHTML = `<i class="${provider === "google" ? "ri-google-fill" : "ri-microsoft-fill"}" style="color:var(--accent);"></i> Connect ${providerLabel}`;
+    }
+    if (descEl) {
+      descEl.innerText = "Custom label is optional. If left blank, your connected drive's default email/ID will be displayed.";
+    }
+    if (inputEl) inputEl.value = "";
+    if (submitBtn) submitBtn.innerHTML = `<i class="ri-external-link-line"></i> Connect Drive`;
+  }
+
+  if (modal) {
+    modal.style.display = "flex";
+    requestAnimationFrame(() => inputEl?.focus());
+  }
 }
 
 function closeCloudAccountFormModal() {
@@ -668,9 +710,62 @@ function closeCloudAccountFormModal() {
 
 async function submitCloudAccountForm() {
   const customName = (document.getElementById("cloud-account-custom-name-input")?.value || "").trim();
+  const { mode, provider, accountId } = accountFormState;
   closeCloudAccountFormModal();
-  if (accountFormState.mode === "add") {
-    await startDirectOAuthReconnect(accountFormState.provider, customName);
+
+  if (mode === "rename" && accountId) {
+    try {
+      const res = await fetch("/api/cloud/account/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          account_id: accountId,
+          action: "rename",
+          custom_name: customName
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(customName ? `Drive renamed to "${customName}"` : "Restored default drive label", "success");
+        await loadConnectedCloudAccounts();
+        await bootAuthenticatedDashboard();
+      } else {
+        showToast(data.error || "Could not update drive label", "error");
+      }
+    } catch (e) {
+      showToast("Network error updating label", "error");
+    }
+    return;
+  }
+
+  showToast(`Connecting to ${provider.toUpperCase()}... Please authorize in the popup window.`, "info");
+  try {
+    const res = await fetch(`/api/cloud/oauth-url/${provider}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ custom_name: customName })
+    });
+    const data = await res.json();
+    if (data.auth_url) {
+      const width = 500, height = 650;
+      const left = window.screenX + (window.innerWidth - width) / 2;
+      const top = window.screenY + (window.innerHeight - height) / 2;
+      const authWindow = window.open(data.auth_url, "CloudOAuth", `width=${width},height=${height},left=${left},top=${top}`);
+
+      const pollTimer = setInterval(async () => {
+        if (!authWindow || authWindow.closed) {
+          clearInterval(pollTimer);
+          showToast("Verifying and syncing cloud accounts...", "info");
+          await loadConnectedCloudAccounts();
+          await bootAuthenticatedDashboard();
+          showToast("Cloud account connected & synced successfully!", "success");
+        }
+      }, 1000);
+    } else {
+      showToast(data.error || "Could not generate auth URL", "error");
+    }
+  } catch (e) {
+    showToast("Network error initiating cloud connection", "error");
   }
 }
 
@@ -731,23 +826,43 @@ async function toggleCloudAccountState(accountId, isEnabled) {
 }
 
 // ========================================================================
-// 📂 INTERACTIVE CLOUD DRIVE EXPLORER PICKER & LOADING STATUS
+// 📂 STANDALONE FULL-HEIGHT RIGHT-SIDE CLOUD DRIVE EXPLORER DRAWER
 // ========================================================================
+function syncCloudPickerDrawerBounds() {
+  const drawer = document.getElementById("cloud-picker-drawer");
+  if (!drawer) return;
+  const headerEl = document.querySelector(".top-header, header");
+  const footerEl = document.querySelector(".global-footer, footer");
+  const topPx = headerEl ? headerEl.getBoundingClientRect().height : 62;
+  const bottomPx = footerEl ? footerEl.getBoundingClientRect().height : 38;
+  drawer.style.top = `${topPx}px`;
+  drawer.style.bottom = `${bottomPx}px`;
+}
+
+window.addEventListener("resize", syncCloudPickerDrawerBounds);
+
 function openAccountPickerModal(accountId, accountName, provider) {
   openCloudDriveManager(false);
   activeBrowseAccount = { accountId, accountName, provider };
   cloudNavigationStack = [{ id: "root", name: accountName }];
-  
+
+  const drawer = document.getElementById("cloud-picker-drawer");
   const titleEl = document.getElementById("cloud-picker-title");
+
   if (titleEl) {
     titleEl.innerHTML = `<i class="${provider === "google" ? "ri-google-fill" : "ri-microsoft-fill"}" style="color:var(--accent);"></i> ${accountName} Explorer`;
   }
-  document.getElementById("cloud-picker-modal").style.display = "flex";
+
+  syncCloudPickerDrawerBounds();
+  if (drawer) drawer.classList.add("open");
+
   fetchCloudPickerItems("root");
 }
 
 function closeCloudPickerModal() {
-  document.getElementById("cloud-picker-modal").style.display = "none";
+  const drawer = document.getElementById("cloud-picker-drawer");
+  if (drawer) drawer.classList.remove("open");
+
   activeBrowseAccount = null;
   cloudNavigationStack = [];
 }
@@ -795,7 +910,7 @@ async function fetchCloudPickerItems(folderId = "root") {
 
   const listContainer = document.getElementById("cloud-picker-list");
   if (!listContainer) return;
-  
+
   listContainer.innerHTML = `
     <div style="text-align:center; padding:50px 20px;">
       <div class="vault-spinner" style="margin:0 auto 12px auto;"></div>
@@ -856,9 +971,9 @@ async function fetchCloudPickerItems(folderId = "root") {
 async function triggerCloudAssetImport(name, cloudId, type) {
   if (!activeBrowseAccount) return;
   const currentFolder = cloudNavigationStack[cloudNavigationStack.length - 1]?.id || "root";
-  
+
   showToast(`Mounting "${name}"... Please wait.`, "info");
-  
+
   try {
     const response = await fetch("/api/cloud/import", {
       method: "POST",
