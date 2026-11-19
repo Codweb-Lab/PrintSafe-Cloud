@@ -75,9 +75,11 @@ function resetSignInFlows() {
   if (oStep2) oStep2.style.display = "none";
   if (oCode) oCode.value = "";
 
+  const pIdent = document.getElementById("pin-login-identifier-input");
   const pCode = document.getElementById("pin-login-code-input");
   const twoFaBox = document.getElementById("signin-2fa-box");
   const twoFaCode = document.getElementById("signin-totp-code");
+  if (pIdent) pIdent.value = "";
   if (pCode) pCode.value = "";
   if (twoFaBox) twoFaBox.style.display = "none";
   if (twoFaCode) twoFaCode.value = "";
@@ -223,8 +225,14 @@ async function submitUserLogin() {
     credential = (document.getElementById("otp-login-code-input")?.value || "").trim();
     activeBtn = document.getElementById("otp-step2-btn") || document.querySelector("#otp-login-step2 button.btn-primary, #otp-login-step2 button[onclick*='submitUserLogin']");
   } else if (activeLoginSubMethod === "pin") {
+    email = (document.getElementById("pin-login-identifier-input")?.value || "").trim().toLowerCase();
     credential = (document.getElementById("pin-login-code-input")?.value || "").trim();
     activeBtn = document.getElementById("pin-step1-btn");
+    if (!email) {
+      showToast("Please enter your Email or User ID.", "error");
+      document.getElementById("pin-login-identifier-input")?.focus();
+      return;
+    }
   }
 
   const totp_code = (document.getElementById("signin-totp-code")?.value || "").trim();

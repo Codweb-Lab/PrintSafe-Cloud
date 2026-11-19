@@ -537,19 +537,19 @@ def api_user_login():
     try:
         user_row = None
         if method == 'pin':
+            if not email:
+                return jsonify({"success": False, "error": "Email or User ID is required for PIN sign-in."}), 400
             if not credential.isdigit() or len(credential) not in (4, 6):
                 return jsonify({"success": False, "error": "PIN must be 4 or 6 digits."}), 400
-            if email:
-                cand = conn.execute("SELECT * FROM users WHERE email = ? AND pin_hash != ''", (email,)).fetchone()
-                if cand and check_password_hash(cand['pin_hash'], credential):
-                    user_row = cand
-            if not user_row:
-                for cand in conn.execute("SELECT * FROM users WHERE pin_hash != '' AND pin_hash IS NOT NULL").fetchall():
-                    if check_password_hash(cand['pin_hash'], credential):
-                        user_row = cand
-                        break
-            if not user_row:
-                return jsonify({"success": False, "error": "Invalid Security PIN!"}), 401
+
+            cand = conn.execute(
+                "SELECT * FROM users WHERE LOWER(email) = ? OR LOWER(user_id) = ?",
+                (email, email)
+            ).fetchone()
+
+            if not cand or not cand['pin_hash'] or not check_password_hash(cand['pin_hash'], credential):
+                return jsonify({"success": False, "error": "Invalid Email/User ID or Security PIN!"}), 401
+            user_row = cand
         else:
             user_row = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
             if not user_row:
