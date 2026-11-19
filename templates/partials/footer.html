@@ -1,6 +1,16 @@
 <footer class="printsafe-footer">
   <div class="footer-content" style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 12px;">
-    <p style="margin: 0; white-space: nowrap;">© 2026 PrintSafe-Cloud. All rights reserved.</p>
+    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+      <p style="margin: 0; white-space: nowrap;">© 2026 PrintSafe-Cloud. All rights reserved.</p>
+      <span style="opacity: 0.35;">|</span>
+      <button type="button" onclick="openAboutModal()" style="background: none; border: none; padding: 0; color: var(--accent); font-size: 12px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; font-family: inherit;">
+        <i class="ri-information-line"></i> About
+      </button>
+      <button type="button" onclick="openHelpCenterModal()" style="background: none; border: none; padding: 0; color: var(--accent); font-size: 12px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; font-family: inherit;">
+        <i class="ri-question-line"></i> Help Center
+      </button>
+    </div>
+
     <p class="branding-text" style="margin: 0; white-space: nowrap;">
       Made with <span class="heart-icon" style="color: #ef4444;"><i class="ri-heart-fill"></i></span> by
       <span class="company-name">Kapil Jangid</span>

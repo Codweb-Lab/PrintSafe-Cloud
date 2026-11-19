@@ -424,35 +424,143 @@ async function handleIncomingSyncEvent(ev) {
   }
 }
 
-// ========================================================================
-// 🔔 NOTIFICATION CENTER & USER PROFILE SETTINGS
-// ========================================================================
-async function openNotificationCenterModal() {
-  const modal = document.getElementById("notification-center-modal");
+// ==================================================================================
+// 🔔 NOTIFICATION CENTER POPOVER DROPDOWN (UNDER BELL ICON) & USER PROFILE SETTINGS
+// ==================================================================================
+
+async function toggleNotificationPopover(event) {
+  if (event) event.stopPropagation();
+  const popover = document.getElementById("notification-popover-dropdown");
+  const profileDrop = document.getElementById("profile-menu-dropdown");
+  if (profileDrop) profileDrop.style.display = "none";
+  if (!popover) return;
+
+  const isOpen = popover.style.display === "block";
+  if (isOpen) {
+    popover.style.display = "none";
+    return;
+  }
+
+  popover.style.display = "block";
   const list = document.getElementById("notifications-list-container");
-  if (!modal || !list) return;
-  modal.style.display = "flex";
+  if (list) {
+    list.innerHTML = `<div style="text-align:center;color:var(--text-sub);padding:18px;font-size:12.5px;"><div class="vault-spinner small" style="margin:0 auto 6px;"></div>Loading...</div>`;
+  }
+
   try {
     const res = await fetch("/api/notifications");
-    if (res.ok) {
+    if (res.ok && list) {
       const data = await res.json();
-      list.innerHTML = data.notifications.length
-        ? data.notifications
+      const items = data.notifications || [];
+      list.innerHTML = items.length
+        ? items
             .map(
               (n) => `
-          <div class="provider-section-card" style="padding:12px;">
-            <div style="font-weight:700;font-size:13px;color:var(--accent);">${n.title}</div>
-            <div style="font-size:12px;color:var(--text-sub);margin-top:4px;">${n.message}</div>
+          <div class="provider-section-card" style="padding:10px 12px;">
+            <div style="font-weight:700;font-size:12.5px;color:var(--accent);">${n.title}</div>
+            <div style="font-size:11.5px;color:var(--text-sub);margin-top:3px;line-height:1.45;">${n.message}</div>
           </div>`
             )
             .join("")
-        : `<div style="text-align:center;color:var(--text-sub);padding:20px;font-size:13px;">No notifications yet.</div>`;
+        : `<div style="text-align:center;color:var(--text-sub);padding:22px 12px;font-size:12.5px;"><i class="ri-notification-off-line" style="font-size:24px;display:block;margin-bottom:4px;opacity:0.5;"></i>No notifications yet.</div>`;
 
       await fetch("/api/notifications", { method: "POST" });
       const badge = document.getElementById("header-notif-badge");
       if (badge) badge.style.display = "none";
     }
   } catch (e) {}
+}
+
+async function markAllNotificationsRead(event) {
+  if (event) event.stopPropagation();
+  try {
+    await fetch("/api/notifications", { method: "POST" });
+    const badge = document.getElementById("header-notif-badge");
+    if (badge) badge.style.display = "none";
+    showToast("All notifications marked as read", "info");
+  } catch (e) {}
+}
+
+document.addEventListener("click", (e) => {
+  const popover = document.getElementById("notification-popover-dropdown");
+  const wrapper = document.querySelector(".notification-popover-wrapper");
+  if (popover && popover.style.display === "block" && wrapper && !wrapper.contains(e.target)) {
+    popover.style.display = "none";
+  }
+});
+
+// ========================================================================
+// 📚 APPLICATION HELP CENTER MODAL CONTROLLERS
+// ========================================================================
+function openHelpCenterModal() {
+  const modal = document.getElementById("help-center-modal");
+  const profileDrop = document.getElementById("profile-menu-dropdown");
+  if (profileDrop) profileDrop.style.display = "none";
+  if (modal) modal.style.display = "flex";
+}
+
+function closeHelpCenterModal() {
+  const modal = document.getElementById("help-center-modal");
+  if (modal) modal.style.display = "none";
+}
+
+function selectHelpCategory(cat, btnEl) {
+  document.querySelectorAll("#help-center-tabs .filter-pill").forEach((b) => b.classList.remove("active"));
+  if (btnEl) btnEl.classList.add("active");
+  const searchVal = (document.getElementById("help-center-search-input")?.value || "").toLowerCase().trim();
+  document.querySelectorAll(".help-topic-card").forEach((card) => {
+    const matchesCat = cat === "all" || card.dataset.category === cat;
+    const matchesText = !searchVal || card.innerText.toLowerCase().includes(searchVal);
+    card.style.display = matchesCat && matchesText ? "block" : "none";
+  });
+}
+
+function filterHelpCenterTopics(query) {
+  const q = (query || "").toLowerCase().trim();
+  const activeTab = document.querySelector("#help-center-tabs .filter-pill.active");
+  const activeCat = activeTab ? (activeTab.getAttribute("onclick")?.match(/'([^']+)'/)?.[1] || "all") : "all";
+  document.querySelectorAll(".help-topic-card").forEach((card) => {
+    const matchesCat = activeCat === "all" || card.dataset.category === activeCat;
+    const matchesText = !q || card.innerText.toLowerCase().includes(q);
+    card.style.display = matchesCat && matchesText ? "block" : "none";
+  });
+}
+
+// ========================================================================
+// 🔐 CHANGE ACCOUNT PASSWORD HANDLER
+// ========================================================================
+async function saveUserAccountPassword() {
+  const current_password = (document.getElementById("user-curr-password-input")?.value || "").trim();
+  const new_password = (document.getElementById("user-new-password-input")?.value || "").trim();
+  const confirm_password = (document.getElementById("user-confirm-password-input")?.value || "").trim();
+
+  if (new_password.length < 6) {
+    showToast("New password must be at least 6 characters.", "error");
+    return;
+  }
+  if (new_password !== confirm_password) {
+    showToast("New password and confirm password do not match.", "error");
+    return;
+  }
+
+  try {
+    const res = await fetch("/api/user/security/password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ current_password, new_password, confirm_password })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message || "Password updated!", "success");
+      document.getElementById("user-curr-password-input").value = "";
+      document.getElementById("user-new-password-input").value = "";
+      document.getElementById("user-confirm-password-input").value = "";
+    } else {
+      showToast(data.error || "Failed to update password", "error");
+    }
+  } catch (e) {
+    showToast("Network error updating password", "error");
+  }
 }
 
 async function openUserProfileModal() {

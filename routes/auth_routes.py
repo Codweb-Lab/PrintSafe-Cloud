@@ -860,6 +860,40 @@ def user_set_pin():
         conn.close()
 
 
+@auth_bp.route('/api/user/security/password', methods=['POST'])
+def user_change_password():
+    user_id = session.get('user_id')
+    if not session.get('is_authenticated') or not user_id:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    data = request.get_json(silent=True) or {}
+    current_pw = (data.get("current_password") or "").strip()
+    new_pw = (data.get("new_password") or "").strip()
+    confirm_pw = (data.get("confirm_password") or "").strip()
+
+    if len(new_pw) < 6:
+        return jsonify({"success": False, "error": "New password must be at least 6 characters long."})
+    if new_pw != confirm_pw:
+        return jsonify({"success": False, "error": "New password and confirm password do not match."})
+
+    conn = get_db_connection()
+    try:
+        row = conn.execute("SELECT password_hash FROM users WHERE user_id = ?", (user_id,)).fetchone()
+        if not row:
+            return jsonify({"success": False, "error": "User account not found."})
+
+        existing_hash = row["password_hash"] or ""
+        if existing_hash:
+            if not current_pw or not check_password_hash(existing_hash, current_pw):
+                return jsonify({"success": False, "error": "Current password is incorrect."})
+
+        conn.execute("UPDATE users SET password_hash = ? WHERE user_id = ?", (generate_password_hash(new_pw), user_id))
+        conn.commit()
+        return jsonify({"success": True, "message": "Account password updated successfully!"})
+    finally:
+        conn.close()
+
+
 @auth_bp.route('/api/logout', methods=['POST'])
 def api_logout():
     sid = session.get('session_id')

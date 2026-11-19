@@ -26,15 +26,17 @@
 
 <!-- ☁️ CUSTOM MODAL FOR ADDING / RENAMING CLOUD ACCOUNT -->
 <div id="cloud-account-form-modal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(8px); z-index: 10005; align-items: center; justify-content: center; padding: 16px;">
-  <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 24px; border-radius: var(--radius-card); width: 100%; max-width: 390px; box-shadow: var(--card-shadow);">
-    <h3 id="cloud-account-form-title" style="margin-top: 0; margin-bottom: 8px; font-size: 16.5px; display:flex; align-items:center; gap:8px;">Connect Cloud Account</h3>
-    <p style="font-size: 12px; color: var(--text-sub); margin-top: 0; margin-bottom: 14px;">
-      Custom label is optional. If left blank, your account's email address will be displayed automatically.
+  <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 24px; border-radius: var(--radius-card); width: 100%; max-width: 395px; box-shadow: var(--card-shadow);">
+    <h3 id="cloud-account-form-title" style="margin-top: 0; margin-bottom: 8px; font-size: 16.5px; display:flex; align-items:center; gap:8px;">
+      <i class="ri-cloud-line" style="color:var(--accent);"></i> Connect Cloud Account
+    </h3>
+    <p id="cloud-account-form-desc" style="font-size: 12px; color: var(--text-sub); margin-top: 0; margin-bottom: 14px; line-height: 1.5;">
+      Custom label is optional. If left blank, your connected account email/ID will be displayed automatically.
     </p>
-    <input type="text" id="cloud-account-custom-name-input" placeholder="Optional Custom Label (e.g. Work Drive)" style="width: 100%; padding: 11px 14px; margin-bottom: 18px; border-radius: var(--radius-btn); border: 1px solid var(--border); background: var(--bg-app); color: var(--text-title); font-size: 13.5px; outline: none;" onkeydown="if(event.key==='Enter') submitCloudAccountForm()">
+    <input type="text" id="cloud-account-custom-name-input" placeholder="Optional Drive Label (e.g. Personal Drive, Work Docs)" style="width: 100%; padding: 11px 14px; margin-bottom: 18px; border-radius: var(--radius-btn); border: 1px solid var(--border); background: var(--bg-app); color: var(--text-title); font-size: 13.5px; outline: none;" onkeydown="if(event.key==='Enter') submitCloudAccountForm()">
     <div style="display: flex; justify-content: flex-end; gap: 10px;">
-      <button onclick="closeCloudAccountFormModal()" style="padding: 9px 16px; border: 1px solid var(--border); background: transparent; border-radius: var(--radius-btn); cursor: pointer; color: var(--text-title); font-weight: 600;">Cancel</button>
-      <button id="cloud-account-form-submit-btn" onclick="submitCloudAccountForm()" style="padding: 9px 16px; border: none; background: var(--accent-gradient); color: white; border-radius: var(--radius-btn); cursor: pointer; font-weight: 700; display:inline-flex; align-items:center; gap:6px;">Continue</button>
+      <button type="button" onclick="closeCloudAccountFormModal()" style="padding: 9px 16px; border: 1px solid var(--border); background: transparent; border-radius: var(--radius-btn); cursor: pointer; color: var(--text-title); font-weight: 600;">Cancel</button>
+      <button type="button" id="cloud-account-form-submit-btn" onclick="submitCloudAccountForm()" style="padding: 9px 16px; border: none; background: var(--accent-gradient); color: white; border-radius: var(--radius-btn); cursor: pointer; font-weight: 700; display:inline-flex; align-items:center; gap:6px;">Continue</button>
     </div>
   </div>
 </div>
@@ -66,18 +68,31 @@
   </div>
 </div>
 
-<!-- 🔑 SETTINGS MODAL -->
-<!-- 🔐 USER SECURITY SETTINGS: 2FA AUTHENTICATOR APP & QUICK PIN -->
+<!-- 🔐 USER SECURITY SETTINGS: CHANGE PASSWORD, QUICK PIN & 2FA AUTHENTICATOR -->
 <div id="passwordModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); backdrop-filter: blur(8px); align-items: center; justify-content: center; z-index: 10000; padding: 16px;">
-  <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 24px; border-radius: var(--radius-card); width: 100%; max-width: 460px; max-height: 88vh; overflow-y: auto; box-shadow: var(--card-shadow);">
+  <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 24px; border-radius: var(--radius-card); width: 100%; max-width: 470px; max-height: 88vh; overflow-y: auto; box-shadow: var(--card-shadow);">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
       <h3 style="margin:0;font-weight:800;font-size:17px;display:flex;align-items:center;gap:8px;">
-        <i class="ri-shield-keyhole-line" style="color:var(--accent);"></i> Security &amp; 2FA Settings
+        <i class="ri-shield-keyhole-line" style="color:var(--accent);"></i> Security, Password &amp; 2FA Settings
       </h3>
       <button onclick="togglePasswordModal(false)" style="background:none;border:none;font-size:20px;color:var(--text-sub);cursor:pointer;"><i class="ri-close-line"></i></button>
     </div>
 
-    <!-- Section 1: Authenticator App 2FA -->
+    <!-- Section 1: Change Account Password -->
+    <div class="provider-section-card" style="margin-bottom:14px;">
+      <div style="font-weight:800;font-size:14px;margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+        <i class="ri-lock-password-line" style="color:var(--accent);"></i> Change Account Password
+      </div>
+      <p style="font-size:11.5px;color:var(--text-sub);margin:0 0 10px;">
+        Update your sign-in password (minimum 6 characters). If you registered via Google Sign-In, leave Current Password blank to set a new password.
+      </p>
+      <input type="password" id="user-curr-password-input" placeholder="Current Password (leave blank if Google-only)" style="width:100%;padding:9px 12px;margin-bottom:8px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);">
+      <input type="password" id="user-new-password-input" placeholder="New Password (min 6 chars)..." style="width:100%;padding:9px 12px;margin-bottom:8px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);">
+      <input type="password" id="user-confirm-password-input" placeholder="Confirm New Password..." style="width:100%;padding:9px 12px;margin-bottom:10px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);">
+      <button onclick="saveUserAccountPassword()" class="btn-add-account"><i class="ri-key-2-line"></i> Update Password</button>
+    </div>
+
+    <!-- Section 2: Authenticator App 2FA -->
     <div class="provider-section-card" style="margin-bottom:14px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
         <div style="font-weight:800;font-size:14px;"><i class="ri-smartphone-line" style="color:#10b981;"></i> Authenticator App 2FA</div>
@@ -109,7 +124,7 @@
       </details>
     </div>
 
-    <!-- Section 2: Quick Login PIN -->
+    <!-- Section 3: Quick Login PIN -->
     <div class="provider-section-card">
       <div style="font-weight:800;font-size:14px;margin-bottom:6px;"><i class="ri-dialpad-line" style="color:var(--accent);"></i> Quick Login Security PIN</div>
       <input type="password" id="user-new-pin-input" placeholder="Enter new 4 or 6-digit PIN..." maxlength="6" style="width:100%;padding:9px 12px;margin-bottom:10px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);">
@@ -182,12 +197,9 @@
   </div>
 </div>
 
-<!-- ☁️ CLOUD DRIVE BROWSE & PICKER MODAL -->
-
-
 <!-- ℹ️ ABOUT PRINTSAFE CLOUD MODAL -->
-<div id="about-app-modal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(8px); z-index: 10010; align-items: center; justify-content: center; padding: 16px;">
-  <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 24px; border-radius: var(--radius-card); width: 100%; max-width: 460px; box-shadow: var(--card-shadow);">
+<div id="about-app-modal" onclick="if(event.target===this) closeAboutModal()" style="display: none; position: fixed; inset: 0; background: rgba(9, 13, 22, 0.72); z-index: 10010; align-items: center; justify-content: center; padding: 16px;">
+  <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 24px; border-radius: var(--radius-card); width: 100%; max-width: 460px; box-shadow: var(--card-shadow); transform: translateZ(0); contain: layout paint;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
       <div style="display:flex;align-items:center;gap:10px;">
         <img src="{{ url_for('static', filename='images/logo3.svg') }}" alt="Logo" style="width:28px;height:28px;">
@@ -196,16 +208,122 @@
       <button onclick="closeAboutModal()" style="background:none;border:none;font-size:20px;color:var(--text-sub);cursor:pointer;"><i class="ri-close-line"></i></button>
     </div>
     <p style="font-size:13px;color:var(--text-sub);line-height:1.6;margin-top:0;">
-      <strong>PrintSafe Cloud</strong> is a Zero-Trust Encrypted Document Vault & Remote Print Station engineered for zero-footprint document viewing and printing on shared computers.
+      <strong>PrintSafe Cloud</strong> is a Zero-Trust Encrypted Document Vault &amp; Remote Print Station engineered for zero-footprint document viewing and printing on shared computers.
     </p>
     <div style="background:var(--bg-app);border:1px solid var(--border);border-radius:var(--radius-btn);padding:12px;font-size:12.5px;color:var(--text-title);line-height:1.6;margin:12px 0;">
       <div><i class="ri-printer-line" style="color:var(--accent);"></i> <strong>Zero-Trace Vector Print:</strong> Stream and print PDFs/images without leaving local downloads.</div>
-      <div><i class="ri-qr-scan-2-line" style="color:#22c55e;"></i> <strong>QR Desktop Guard:</strong> Pair desktops via mobile QR with live masking & session termination.</div>
-      <div><i class="ri-cloud-line" style="color:#38bdf8;"></i> <strong>Multi-Cloud Bridge:</strong> Mount Google Drive & OneDrive accounts seamlessly.</div>
+      <div><i class="ri-qr-scan-2-line" style="color:#22c55e;"></i> <strong>QR Desktop Guard:</strong> Pair desktops via mobile QR with live masking &amp; session termination.</div>
+      <div><i class="ri-cloud-line" style="color:#38bdf8;"></i> <strong>Multi-Cloud Bridge:</strong> Mount Google Drive, OneDrive &amp; SFTP/FTP storages seamlessly.</div>
     </div>
     <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-sub);border-top:1px solid var(--border);padding-top:10px;">
       <span>Developed by <strong>Kapil Jangid @Codweb Lab</strong></span>
       <span>{{ app_version }}</span>
+    </div>
+  </div>
+</div>
+
+<!-- 📚 COMPREHENSIVE APPLICATION HELP CENTER MODAL -->
+<!-- 📚 COMPREHENSIVE APPLICATION HELP CENTER MODAL (GPU-ACCELERATED 60FPS SCROLL) -->
+<div id="help-center-modal" onclick="if(event.target===this) closeHelpCenterModal()" style="display: none; position: fixed; inset: 0; background: rgba(9, 13, 22, 0.74); z-index: 10012; align-items: center; justify-content: center; padding: 16px;">
+  <div style="background: var(--surface-card); border: 1px solid var(--border); border-radius: var(--radius-card); width: 100%; max-width: 780px; max-height: 88vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: var(--card-shadow); transform: translateZ(0); contain: layout paint;">
+    <!-- Header -->
+    <div style="padding: 18px 22px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-shrink: 0;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div style="width: 36px; height: 36px; border-radius: var(--radius-btn); background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 19px;">
+          <i class="ri-book-read-line"></i>
+        </div>
+        <div>
+          <h3 style="margin: 0; font-size: 17px; font-weight: 800;">PrintSafe Cloud — Complete Help Center</h3>
+          <div style="font-size: 11.5px; color: var(--text-sub);">In-depth guide to Zero-Trust Vault, Multi-Cloud Mounting, QR Desktop Guard &amp; Vector Printing</div>
+        </div>
+      </div>
+      <button onclick="closeHelpCenterModal()" style="background: none; border: none; font-size: 21px; color: var(--text-sub); cursor: pointer;"><i class="ri-close-line"></i></button>
+    </div>
+
+    <!-- Search & Topic Tabs -->
+    <div style="padding: 12px 22px; background: var(--bg-app); border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; flex-shrink: 0;">
+      <div style="display: flex; align-items: center; gap: 8px; background: var(--surface-card); border: 1px solid var(--border); border-radius: var(--radius-btn); padding: 8px 12px;">
+        <i class="ri-search-line" style="color: var(--accent);"></i>
+        <input type="text" id="help-center-search-input" placeholder="Search help topics (e.g. Google Drive, QR scan, 2FA, print queue, SFTP, password)..." oninput="filterHelpCenterTopics(this.value)" style="border: none; background: transparent; outline: none; color: var(--text-title); font-size: 13px; width: 100%; font-family: inherit;">
+      </div>
+      <div id="help-center-tabs" style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px;">
+        <button class="filter-pill active" onclick="selectHelpCategory('all', this)"><i class="ri-apps-line"></i> All Guides</button>
+        <button class="filter-pill" onclick="selectHelpCategory('cloud', this)"><i class="ri-cloud-line"></i> Cloud &amp; SFTP</button>
+        <button class="filter-pill" onclick="selectHelpCategory('print', this)"><i class="ri-printer-line"></i> Preview &amp; Print</button>
+        <button class="filter-pill" onclick="selectHelpCategory('qr', this)"><i class="ri-qr-scan-2-line"></i> QR Desktop Guard</button>
+        <button class="filter-pill" onclick="selectHelpCategory('security', this)"><i class="ri-shield-check-line"></i> Security &amp; 2FA</button>
+      </div>
+    </div>
+
+    <!-- Scrollable Guide Articles (Isolated GPU Scroll Layer) -->
+    <div id="help-center-body" style="padding: 18px 22px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 14px; will-change: scroll-position; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;">
+      
+      <div class="provider-section-card help-topic-card" data-category="cloud">
+        <div style="font-weight: 800; font-size: 14.5px; color: var(--accent); margin-bottom: 6px; display: flex; align-items: center; gap: 7px;">
+          <i class="ri-cloud-line"></i> 1. Connecting &amp; Mounting Google Drive / OneDrive
+        </div>
+        <ol style="margin: 0 0 0 18px; font-size: 12.5px; color: var(--text-title); line-height: 1.7;">
+          <li>Open <b>Google Drive</b> or <b>OneDrive</b> in the left sidebar (or <b>Profile Menu → Cloud Drive Manager</b>) and click <b>Connect Account</b> / <b>Add Account</b>.</li>
+          <li>Assign an optional custom display label (e.g., <i>"Work Drive"</i> or <i>"College Docs"</i>). If left blank, your email address is used automatically. You can rename any account anytime inside Cloud Drive Manager.</li>
+          <li>Click the <b>Folder (<i class="ri-folder-add-line"></i>)</b> icon beside an active drive (or <b>Browse</b> in Cloud Manager) to open the right-side <b>Cloud Drive Explorer</b>.</li>
+          <li>Click any folder name to drill down inside, and click <b>Mount</b> on the folders/files you want in your Vault. Only mounted items appear in your workspace.</li>
+          <li>Use the toggle switch in Cloud Manager to temporarily hide/show an account without losing its mounted folders.</li>
+        </ol>
+      </div>
+
+      <div class="provider-section-card help-topic-card" data-category="cloud">
+        <div style="font-weight: 800; font-size: 14.5px; color: var(--accent); margin-bottom: 6px; display: flex; align-items: center; gap: 7px;">
+          <i class="ri-upload-cloud-2-line"></i> 2. Uploading Files &amp; Hosting SFTP / FTP Storage
+        </div>
+        <ul style="margin: 0 0 0 18px; font-size: 12.5px; color: var(--text-title); line-height: 1.7;">
+          <li><b>Zero-Local-Storage Uploads:</b> PrintSafe Cloud never stores your files on the web server. Open any mounted Google Drive, OneDrive, or SFTP/FTP folder and click the green <b>Upload to [Folder]</b> button at the bottom right to upload directly into that cloud/remote folder.</li>
+          <li><b>cPanel / VPS Storage:</b> Click <b>Hosting SFTP/FTP</b> in the left sidebar to mount your server directory via SFTP (Port 22) or FTP (Port 21).</li>
+          <li><b>Right-Click Context Menu:</b> Right-click any folder to <b>Unmount</b> it from your Vault (your original cloud files remain untouched), or right-click a file to permanently delete it from the source storage.</li>
+        </ul>
+      </div>
+
+      <div class="provider-section-card help-topic-card" data-category="print">
+        <div style="font-weight: 800; font-size: 14.5px; color: var(--accent); margin-bottom: 6px; display: flex; align-items: center; gap: 7px;">
+          <i class="ri-printer-cloud-line"></i> 3. Zero-Trace Vector Printing &amp; "To Be Printed" Queue
+        </div>
+        <ul style="margin: 0 0 0 18px; font-size: 12.5px; color: var(--text-title); line-height: 1.7;">
+          <li><b>In-Memory Document Preview:</b> Click any PDF, Image (JPG/PNG/WEBP), or Jupyter Notebook (<code>.ipynb</code>) to stream and render it directly in your browser's RAM without saving anything to the computer's Downloads folder.</li>
+          <li><b>Password-Protected PDFs:</b> Encrypted PDFs show a <i>Locked</i> badge; click them and enter the PDF password to unlock and print in memory.</li>
+          <li><b>Clean Vector Print:</b> Click <b>Print</b> in the top-right preview bar to print crisp pages with zero browser headers/footers or temporary files.</li>
+          <li><b>To Be Printed Queue:</b> Click the <b>Printer (<i class="ri-printer-line"></i>)</b> icon on any file card to bookmark documents you plan to print at a cyber café or print shop.</li>
+        </ul>
+      </div>
+
+      <div class="provider-section-card help-topic-card" data-category="qr">
+        <div style="font-weight: 800; font-size: 14.5px; color: #22c55e; margin-bottom: 6px; display: flex; align-items: center; gap: 7px;">
+          <i class="ri-qr-scan-2-line"></i> 4. QR Desktop Guard (Safe Printing on Public PCs)
+        </div>
+        <ol style="margin: 0 0 0 18px; font-size: 12.5px; color: var(--text-title); line-height: 1.7;">
+          <li>Never type your password on a shared/shop computer. Open PrintSafe Cloud on the shop PC—a live <b>QR Code</b> appears on the login screen.</li>
+          <li>On your phone, sign in to PrintSafe Cloud and tap the blue <b>QR Scan (<i class="ri-qr-scan-2-line"></i>)</b> button at the bottom right.</li>
+          <li>Scan the desktop QR code. The desktop logs in under <b>Restricted QR Mode</b> (uploads, deletions, and cloud settings are locked).</li>
+          <li>From your phone's <b>Connected Devices (<i class="ri-computer-line"></i>)</b> panel, you can live-toggle <b>Mask Folder Names ("xxxxx")</b>, disable profile access, or click <b>Logout Device</b> to remotely terminate the desktop session the moment your print finishes.</li>
+        </ol>
+      </div>
+
+      <div class="provider-section-card help-topic-card" data-category="security">
+        <div style="font-weight: 800; font-size: 14.5px; color: #10b981; margin-bottom: 6px; display: flex; align-items: center; gap: 7px;">
+          <i class="ri-shield-keyhole-line"></i> 5. Account Security: Password, Quick PIN &amp; Authenticator 2FA
+        </div>
+        <ul style="margin: 0 0 0 18px; font-size: 12.5px; color: var(--text-title); line-height: 1.7;">
+          <li><b>Change Password:</b> Open <b>Profile Menu → Password, PIN &amp; 2FA</b> to update your login password anytime.</li>
+          <li><b>Quick Security PIN:</b> Set a 4 or 6-digit PIN for fast sign-in on trusted personal devices.</li>
+          <li><b>2FA Authenticator App:</b> Link Google Authenticator, Microsoft Authenticator, or Authy to require a rotating 6-digit TOTP code on every login.</li>
+          <li><b>UI Themes &amp; Design Systems:</b> Switch between <i>Glass Bento</i>, <i>Microsoft Fluent</i>, <i>IBM Carbon</i>, and <i>Cyber Neon</i> in Light, Dark, or System mode from the top header.</li>
+        </ul>
+      </div>
+
+    </div>
+
+    <!-- Footer -->
+    <div style="padding: 12px 22px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--text-sub); background: var(--bg-app);">
+      <span>Need further assistance? Contact <strong>Codweb Lab Support</strong></span>
+      <button onclick="closeHelpCenterModal()" class="btn-add-account">Got It</button>
     </div>
   </div>
 </div>
@@ -227,19 +345,6 @@
 
 <div id="custom-toast-container" style="position: fixed; bottom: 52px; left: 50%; transform: translateX(-50%); z-index: 100005; display: flex; flex-direction: column-reverse; gap: 8px; align-items: center; width: 100%; max-width: 420px; pointer-events: none;"></div>
 
-<!-- 🔔 USER NOTIFICATION CENTER MODAL -->
-<div id="notification-center-modal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(8px); z-index: 10020; align-items: center; justify-content: center; padding: 16px;">
-  <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 22px; border-radius: var(--radius-card); width: 100%; max-width: 460px; max-height: 82vh; display: flex; flex-direction: column; box-shadow: var(--card-shadow);">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-      <h3 style="margin:0;font-size:16.5px;display:flex;align-items:center;gap:8px;">
-        <i class="ri-notification-3-fill" style="color:var(--accent);"></i> Notification Center
-      </h3>
-      <button onclick="document.getElementById('notification-center-modal').style.display='none'" style="background:none;border:none;font-size:20px;color:var(--text-sub);cursor:pointer;"><i class="ri-close-line"></i></button>
-    </div>
-    <div id="notifications-list-container" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px;"></div>
-  </div>
-</div>
-
 <!-- 👤 USER PROFILE UPDATE MODAL (POST-LOGIN) -->
 <div id="user-profile-modal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(8px); z-index: 10021; align-items: center; justify-content: center; padding: 16px;">
   <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 24px; border-radius: var(--radius-card); width: 100%; max-width: 420px; box-shadow: var(--card-shadow);">
@@ -260,22 +365,5 @@
     <button onclick="saveUserProfileDetails()" class="btn-add-account" style="width:100%;justify-content:center;padding:11px;">
       <i class="ri-save-3-line"></i> Save Profile
     </button>
-  </div>
-</div>
-
-<!-- ☁️ CUSTOM MODAL FOR ADDING / RENAMING CLOUD ACCOUNT -->
-<div id="cloud-account-form-modal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(8px); z-index: 10005; align-items: center; justify-content: center; padding: 16px;">
-  <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 24px; border-radius: var(--radius-card); width: 100%; max-width: 395px; box-shadow: var(--card-shadow);">
-    <h3 id="cloud-account-form-title" style="margin-top: 0; margin-bottom: 8px; font-size: 16.5px; display:flex; align-items:center; gap:8px;">
-      <i class="ri-cloud-line" style="color:var(--accent);"></i> Connect Cloud Account
-    </h3>
-    <p id="cloud-account-form-desc" style="font-size: 12px; color: var(--text-sub); margin-top: 0; margin-bottom: 14px; line-height: 1.5;">
-      Custom label is optional. If left blank, your connected account email/ID will be displayed automatically.
-    </p>
-    <input type="text" id="cloud-account-custom-name-input" placeholder="Optional Drive Label (e.g. Personal Drive, Work Docs)" style="width: 100%; padding: 11px 14px; margin-bottom: 18px; border-radius: var(--radius-btn); border: 1px solid var(--border); background: var(--bg-app); color: var(--text-title); font-size: 13.5px; outline: none;" onkeydown="if(event.key==='Enter') submitCloudAccountForm()">
-    <div style="display: flex; justify-content: flex-end; gap: 10px;">
-      <button type="button" onclick="closeCloudAccountFormModal()" style="padding: 9px 16px; border: 1px solid var(--border); background: transparent; border-radius: var(--radius-btn); cursor: pointer; color: var(--text-title); font-weight: 600;">Cancel</button>
-      <button type="button" id="cloud-account-form-submit-btn" onclick="submitCloudAccountForm()" style="padding: 9px 16px; border: none; background: var(--accent-gradient); color: white; border-radius: var(--radius-btn); cursor: pointer; font-weight: 700; display:inline-flex; align-items:center; gap:6px;">Continue</button>
-    </div>
   </div>
 </div>

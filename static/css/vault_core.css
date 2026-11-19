@@ -557,3 +557,16 @@ body, html {
   .connected-devices-pill { padding: 5px 8px !important; }
   .profile-avatar-pill { width: 32px !important; height: 32px !important; flex-shrink: 0 !important; }
 }
+
+/* Eliminate double-backdrop-blur GPU lag on full-screen overlays */
+#passwordModal,
+#cloud-sync-modal,
+#connected-devices-modal,
+#remote-storage-modal,
+#user-profile-modal,
+#about-app-modal,
+#help-center-modal {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: rgba(9, 13, 22, 0.72) !important;
+}

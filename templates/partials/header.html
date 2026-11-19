@@ -20,17 +20,27 @@
       <span id="header-connected-count">0</span>
     </button>
 
-    <!-- About App Button -->
-    <button class="connected-devices-pill" onclick="openAboutModal()" title="About PrintSafe Cloud">
-      <i class="ri-information-line" style="color:var(--accent);"></i>
-      <span class="hide-sm-label">About</span>
-    </button>
+    <!-- 🔔 NOTIFICATION CENTER BELL WITH ANCHORED POPOVER DROPDOWN -->
+    <div class="notification-popover-wrapper" style="position: relative;">
+      <button id="header-notif-bell-btn" class="connected-devices-pill" onclick="toggleNotificationPopover(event)" title="Notifications">
+        <i class="ri-notification-3-line" style="color:var(--accent);font-size:15px;"></i>
+        <span id="header-notif-badge" style="background:#ef4444;color:#fff;font-size:10px;padding:1px 6px;border-radius:99px;display:none;">0</span>
+      </button>
 
-    <!-- 🔔 NOTIFICATION CENTER BELL -->
-    <button class="connected-devices-pill" onclick="openNotificationCenterModal()" title="Notifications">
-      <i class="ri-notification-3-line" style="color:var(--accent);font-size:15px;"></i>
-      <span id="header-notif-badge" style="background:#ef4444;color:#fff;font-size:10px;padding:1px 6px;border-radius:99px;display:none;">0</span>
-    </button>
+      <div id="notification-popover-dropdown" class="modern-profile-popover" style="display: none; width: 320px; max-width: calc(100vw - 24px); padding: 0; overflow: hidden;">
+        <div style="padding: 11px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg-app);">
+          <div style="font-weight: 800; font-size: 13px; display: flex; align-items: center; gap: 6px; color: var(--text-title);">
+            <i class="ri-notification-3-fill" style="color: var(--accent);"></i> Notifications
+          </div>
+          <button type="button" onclick="markAllNotificationsRead(event)" style="background: none; border: none; color: var(--accent); font-size: 11px; font-weight: 700; cursor: pointer;">
+            Mark all read
+          </button>
+        </div>
+        <div id="notifications-list-container" style="max-height: 310px; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="text-align:center;color:var(--text-sub);padding:18px;font-size:12.5px;">Loading notifications...</div>
+        </div>
+      </div>
+    </div>
 
     <!-- 🎨 MODERN CUSTOM UI DESIGN SYSTEM DROPDOWN -->
     <div class="modern-dropdown" id="dropdown-ui-style">
@@ -61,7 +71,7 @@
       </div>
     </div>
 
-    <!-- 🌓 3-OPTION ICON THEME MODE SWITCHER -->
+    <!-- 🌗 3-OPTION ICON THEME MODE SWITCHER -->
     <div class="theme-segmented-control">
       <button class="theme-icon-btn" id="theme-btn-light" onclick="setThemeMode('light')" title="Light Mode"><i class="ri-sun-line"></i></button>
       <button class="theme-icon-btn" id="theme-btn-dark" onclick="setThemeMode('dark')" title="Dark Mode"><i class="ri-moon-clear-line"></i></button>
@@ -81,7 +91,7 @@
           <div class="dd-item-left"><i class="ri-user-settings-line" style="color:var(--accent);"></i> <span>My Profile</span></div>
         </div>
         <div class="modern-dropdown-item" onclick="togglePasswordModal(true)">
-          <div class="dd-item-left"><i class="ri-shield-keyhole-line" style="color:#10b981;"></i> <span>Account &amp; 2FA Settings</span></div>
+          <div class="dd-item-left"><i class="ri-shield-keyhole-line" style="color:#10b981;"></i> <span>Password, PIN &amp; 2FA</span></div>
         </div>
         <div class="modern-dropdown-item" onclick="openConnectedDevicesModal(true)">
           <div class="dd-item-left"><i class="ri-computer-line" style="color:#22c55e;"></i> <span>Connected Logins</span></div>
@@ -89,8 +99,8 @@
         <div class="modern-dropdown-item" onclick="openCloudDriveManager(true)">
           <div class="dd-item-left"><i class="ri-cloud-line" style="color:var(--accent);"></i> <span>Cloud Drive Manager</span></div>
         </div>
-        <div class="modern-dropdown-item" onclick="openAboutModal()">
-          <div class="dd-item-left"><i class="ri-information-line" style="color:var(--accent);"></i> <span>About PrintSafe Cloud</span></div>
+        <div class="modern-dropdown-item" onclick="openHelpCenterModal()">
+          <div class="dd-item-left"><i class="ri-book-read-line" style="color:#f59e0b;"></i> <span>Help Center &amp; Guide</span></div>
         </div>
         <div class="modern-dropdown-item" onclick="confirmLogoutModal()" style="color: #ef4444; border-top: 1px solid var(--border); margin-top: 6px; padding-top: 9px;">
           <div class="dd-item-left"><i class="ri-logout-box-r-line" style="color:#ef4444;"></i> <span>Logout Vault</span></div>
