@@ -58,8 +58,25 @@ function getCloudAccountDisplayLabel(acc) {
 // ========================================================================
 // 🚀 DASHBOARD BOOTSTRAP & USER HEADER HYDRATION (INSTANT <200ms BOOT)
 // ========================================================================
+const cloudPickerDirCache = {}; // Instant RAM cache for right-side cloud explorer
+
 async function bootAuthenticatedDashboard() {
   try {
+    // 0. Instant 0ms Hydration from sessionStorage before network roundtrip completes
+    try {
+      const cachedTreeRaw = sessionStorage.getItem("ps_cached_vault_tree");
+      const cachedAccsRaw = sessionStorage.getItem("ps_cached_cloud_accounts");
+      if (cachedAccsRaw) {
+        connectedAccountsList = JSON.parse(cachedAccsRaw) || [];
+        updateCloudSummaryBadges();
+        renderMultiCloudManagerUI();
+      }
+      if (cachedTreeRaw) {
+        globalVaultTree = JSON.parse(cachedTreeRaw) || [];
+        setExplorerViewMode(currentViewMode);
+      }
+    } catch (e) {}
+
     const sessRes = await fetch("/api/check-session?t=" + Date.now());
     if (!sessRes.ok) {
       window.location.replace("/");
@@ -85,14 +102,15 @@ async function bootAuthenticatedDashboard() {
     const dashBox = document.getElementById("file-manager-dashboard");
     if (authBox) authBox.style.display = "none";
     if (dashBox) dashBox.style.display = "flex";
-    setSidebarCloudLoadingState(true);
 
     applyLiveRestrictionsUI();
     initializeMobileScannerFeatures();
     startBackgroundSyncAndRestrictionMonitor();
 
+    // Show spinner ONLY on cold boot when no cached tree exists
     const gridEl = document.getElementById("main-explorer-grid");
-    if (gridEl) {
+    if (gridEl && (!Array.isArray(globalVaultTree) || globalVaultTree.length === 0)) {
+      setSidebarCloudLoadingState(true);
       gridEl.style.display = "flex";
       gridEl.style.flex = "1";
       gridEl.style.alignItems = "center";
@@ -105,6 +123,7 @@ async function bootAuthenticatedDashboard() {
         </div>`;
     }
 
+    // Parallel fast local-DB fetch + non-blocking background cloud delta sync
     Promise.allSettled([
       loadPrintQueue(),
       loadConnectedCloudAccounts().finally(() => setSidebarCloudLoadingState(false)),
@@ -116,10 +135,35 @@ async function bootAuthenticatedDashboard() {
       })
         .then((r) => (r.ok ? r.json() : null))
         .then((data) => {
-          globalVaultTree = (data && data.tree) ? data.tree : [];
-          setExplorerViewMode(currentViewMode);
+          if (data && Array.isArray(data.tree)) {
+            globalVaultTree = data.tree;
+            try { sessionStorage.setItem("ps_cached_vault_tree", JSON.stringify(globalVaultTree)); } catch (e) {}
+            setExplorerViewMode(currentViewMode);
+          }
         })
-    ]);
+    ]).then(() => {
+      // Silent background delta refresh from Google Drive / OneDrive
+      fetch("/api/cloud/sync-all", { method: "POST" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((syncRes) => {
+          if (syncRes && syncRes.updated > 0) {
+            fetch("/fetch-vault-list", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ session_id: currentSessionId })
+            })
+              .then((r) => (r.ok ? r.json() : null))
+              .then((freshData) => {
+                if (freshData && Array.isArray(freshData.tree)) {
+                  globalVaultTree = freshData.tree;
+                  try { sessionStorage.setItem("ps_cached_vault_tree", JSON.stringify(globalVaultTree)); } catch (e) {}
+                  renderCurrentFolderLevel();
+                }
+              });
+          }
+        })
+        .catch(() => {});
+    });
   } catch (err) {
     setSidebarCloudLoadingState(false);
     console.error("[DASHBOARD BOOT ERROR]:", err);
@@ -526,10 +570,51 @@ async function loadConnectedCloudAccounts() {
     if (!res.ok) return;
     const data = await res.json();
     connectedAccountsList = data.accounts || [];
+    try { sessionStorage.setItem("ps_cached_cloud_accounts", JSON.stringify(connectedAccountsList)); } catch (e) {}
     updateCloudSummaryBadges();
     renderMultiCloudManagerUI();
     updateUploadButtonVisibility();
   } catch (e) {}
+}
+
+function renderCloudPickerListItems(listContainer, items) {
+  listContainer.innerHTML = items.length
+    ? items
+        .map((item) => {
+          const safeName = item.name.replace(/'/g, "\\'");
+          const isFolder = item.type === "folder";
+          const isMounted = Boolean(item.is_mounted);
+          const iconClass = isFolder
+            ? "ri-folder-3-fill"
+            : item.file_type === "pdf"
+            ? "ri-file-pdf-2-fill"
+            : "ri-image-2-fill";
+          const iconColor = isFolder ? "#f59e0b" : "var(--accent)";
+
+          return `
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 16px; border-bottom:1px solid var(--border); gap:10px; transition:0.15s;">
+            <div ${isFolder ? `onclick="enterCloudPickerFolder('${item.cloud_id}', '${safeName}')"` : ""} style="display:flex; align-items:center; gap:12px; overflow:hidden; flex:1; ${isFolder ? "cursor:pointer;" : ""}" title="${isFolder ? "Click to open folder" : item.name}">
+              <i class="${iconClass}" style="color:${iconColor}; font-size:20px; flex-shrink:0;"></i>
+              <div style="overflow:hidden;">
+                <div style="font-size:13.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; align-items:center; gap:6px;">
+                  <span>${item.name}</span>
+                  ${isFolder ? `<i class="ri-arrow-right-s-line" style="color:var(--text-sub); font-size:14px;"></i>` : ""}
+                </div>
+                <div style="font-size:10.5px; color:var(--text-sub);">${isFolder ? "Click folder name to browse inside" : formatFileSize(item.size)}</div>
+              </div>
+              ${isMounted ? `<span class="version-pill" style="background:var(--accent-soft); color:var(--accent); border-color:var(--accent);">Mounted</span>` : ""}
+            </div>
+            <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+              ${
+                isMounted
+                  ? `<button onclick="triggerCloudAssetUnmount('${safeName}', '${item.cloud_id}')" class="btn-acc-action danger"><i class="ri-link-unlink-m"></i> Unmount</button>`
+                  : `<button onclick="triggerCloudAssetImport('${safeName}', '${item.cloud_id}', '${item.type}')" class="btn-acc-action primary"><i class="ri-add-circle-line"></i> Mount</button>`
+              }
+            </div>
+          </div>`;
+        })
+        .join("")
+    : `<div style="text-align:center; color:var(--text-sub); padding:40px; font-size:13px;"><i class="ri-folder-open-line" style="font-size:32px; display:block; margin-bottom:6px; opacity:0.5;"></i>This cloud folder is empty.</div>`;
 }
 
 function toggleSidebarProviderDrawer(provider) {
@@ -904,12 +989,18 @@ function enterCloudPickerFolder(folderId, folderName) {
   fetchCloudPickerItems(folderId);
 }
 
-async function fetchCloudPickerItems(folderId = "root") {
+async function fetchCloudPickerItems(folderId = "root", forceRefresh = false) {
   if (!activeBrowseAccount) return;
   renderCloudPickerBreadcrumbs();
 
   const listContainer = document.getElementById("cloud-picker-list");
   if (!listContainer) return;
+
+  const cacheKey = `${activeBrowseAccount.accountId}:${folderId}`;
+  if (!forceRefresh && cloudPickerDirCache[cacheKey]) {
+    renderCloudPickerListItems(listContainer, cloudPickerDirCache[cacheKey]);
+    return;
+  }
 
   listContainer.innerHTML = `
     <div style="text-align:center; padding:50px 20px;">
@@ -921,47 +1012,12 @@ async function fetchCloudPickerItems(folderId = "root") {
     const response = await fetch(`/api/cloud/fetch/${activeBrowseAccount.accountId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ folder_id: folderId })
+      body: JSON.stringify({ folder_id: folderId, force_refresh: forceRefresh })
     });
     const data = await response.json();
     if (data.authenticated && data.tree) {
-      listContainer.innerHTML = data.tree.length
-        ? data.tree
-            .map((item) => {
-              const safeName = item.name.replace(/'/g, "\\'");
-              const isFolder = item.type === "folder";
-              const isMounted = Boolean(item.is_mounted);
-              const iconClass = isFolder
-                ? "ri-folder-3-fill"
-                : item.file_type === "pdf"
-                ? "ri-file-pdf-2-fill"
-                : "ri-image-2-fill";
-              const iconColor = isFolder ? "#f59e0b" : "var(--accent)";
-
-              return `
-              <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 16px; border-bottom:1px solid var(--border); gap:10px; transition:0.15s;">
-                <div ${isFolder ? `onclick="enterCloudPickerFolder('${item.cloud_id}', '${safeName}')"` : ""} style="display:flex; align-items:center; gap:12px; overflow:hidden; flex:1; ${isFolder ? "cursor:pointer;" : ""}" title="${isFolder ? "Click to open folder" : item.name}">
-                  <i class="${iconClass}" style="color:${iconColor}; font-size:20px; flex-shrink:0;"></i>
-                  <div style="overflow:hidden;">
-                    <div style="font-size:13.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; align-items:center; gap:6px;">
-                      <span>${item.name}</span>
-                      ${isFolder ? `<i class="ri-arrow-right-s-line" style="color:var(--text-sub); font-size:14px;"></i>` : ""}
-                    </div>
-                    <div style="font-size:10.5px; color:var(--text-sub);">${isFolder ? "Click folder name to browse inside" : formatFileSize(item.size)}</div>
-                  </div>
-                  ${isMounted ? `<span class="version-pill" style="background:var(--accent-soft); color:var(--accent); border-color:var(--accent);">Mounted</span>` : ""}
-                </div>
-                <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
-                  ${
-                    isMounted
-                      ? `<button onclick="triggerCloudAssetUnmount('${safeName}', '${item.cloud_id}')" class="btn-acc-action danger"><i class="ri-link-unlink-m"></i> Unmount</button>`
-                      : `<button onclick="triggerCloudAssetImport('${safeName}', '${item.cloud_id}', '${item.type}')" class="btn-acc-action primary"><i class="ri-add-circle-line"></i> Mount</button>`
-                  }
-                </div>
-              </div>`;
-            })
-            .join("")
-        : `<div style="text-align:center; color:var(--text-sub); padding:40px; font-size:13px;"><i class="ri-folder-open-line" style="font-size:32px; display:block; margin-bottom:6px; opacity:0.5;"></i>This cloud folder is empty.</div>`;
+      cloudPickerDirCache[cacheKey] = data.tree;
+      renderCloudPickerListItems(listContainer, data.tree);
     }
   } catch (e) {
     listContainer.innerHTML = `<div style="text-align:center; color:#ef4444; padding:30px; font-size:13px;">Failed to load cloud items.</div>`;

@@ -477,7 +477,7 @@ body, html {
 .preview-title { font-weight: 700; font-size: 13px; max-width: 190px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .preview-actions { display: flex; gap: 6px; }
 .btn-action-view { background: var(--bg-app); border: 1px solid var(--border); padding: 6px 10px; border-radius: var(--radius-btn); font-size: 12px; font-weight: 600; cursor: pointer; color: var(--text-title); display: inline-flex; align-items: center; gap: 4px; }
-.preview-body-scroll { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.preview-body-scroll { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
 .raster-page-preview { max-width: 100%; border-radius: var(--radius-btn); }
 
 #vault-context-menu {

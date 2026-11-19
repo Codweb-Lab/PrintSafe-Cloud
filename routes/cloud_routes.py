@@ -3,6 +3,7 @@ import time
 import uuid
 import json
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlencode
 import requests
 from flask import Blueprint, request, jsonify, session
@@ -19,30 +20,52 @@ cloud_engine = CloudSyncVault()
 
 ALLOWED_EXTENSIONS = {'pdf', 'jpg', 'jpeg', 'png', 'webp', 'ipynb'}
 
+# Fast in-memory TTL caches to eliminate redundant OAuth & directory network calls
+_TOKEN_MEM_CACHE = {}          # account_id -> (access_token, expires_at)
+_CLOUD_DIR_MEM_CACHE = {}      # (account_id, folder_id, max_depth) -> (timestamp, items)
+_DIR_CACHE_TTL = 120.0         # 2 minutes fresh cache for instant folder browsing
+
+
+def invalidate_cloud_dir_cache(account_id: str = None):
+    """Clears cached cloud directory listings for an account (or all accounts)."""
+    if not account_id:
+        _CLOUD_DIR_MEM_CACHE.clear()
+        return
+    keys_to_del = [k for k in _CLOUD_DIR_MEM_CACHE if k[0] == account_id]
+    for k in keys_to_del:
+        _CLOUD_DIR_MEM_CACHE.pop(k, None)
+
 
 # ========================================================================
-# 🔄 AUTOMATIC OAUTH ACCESS TOKEN REFRESH HELPER (GOOGLE & ONEDRIVE)
+# 🔄 AUTOMATIC OAUTH ACCESS TOKEN REFRESH HELPER (WITH MEMORY CACHE)
 # ========================================================================
 def get_valid_account_token(account_id: str):
-    """Returns a valid OAuth access token, automatically refreshing it via refresh_token if expired."""
+    """Returns a valid OAuth access token using RAM cache first, refreshing via refresh_token only when needed."""
     if not account_id:
         return None
+
+    cached = _TOKEN_MEM_CACHE.get(account_id)
+    if cached and time.time() < (cached[1] - 60):
+        return cached[0]
 
     conn = None
     try:
         conn = get_db_connection()
         acc = conn.execute("SELECT * FROM cloud_accounts WHERE account_id = ?", (account_id,)).fetchone()
         if not acc or not acc['is_enabled']:
+            _TOKEN_MEM_CACHE.pop(account_id, None)
             return None
 
-        # Return cached access token if still valid (with 60s safety buffer)
         if acc['access_token'] and acc['expires_at'] and time.time() < (float(acc['expires_at']) - 60):
+            exp_ts = float(acc['expires_at'])
+            _TOKEN_MEM_CACHE[account_id] = (acc['access_token'], exp_ts)
             return acc['access_token']
 
         refresh_token = acc['refresh_token']
         if not refresh_token:
             conn.execute("UPDATE cloud_accounts SET token_status = 'expired' WHERE account_id = ?", (account_id,))
             conn.commit()
+            _TOKEN_MEM_CACHE.pop(account_id, None)
             return None
 
         provider = acc['provider']
@@ -56,7 +79,7 @@ def get_valid_account_token(account_id: str):
                     'refresh_token': refresh_token,
                     'grant_type': 'refresh_token'
                 },
-                timeout=15
+                timeout=10
             )
         else:
             o_cfg = cloud_engine.onedrive_config
@@ -69,18 +92,20 @@ def get_valid_account_token(account_id: str):
                     'grant_type': 'refresh_token',
                     'scope': 'offline_access User.Read Files.ReadWrite.All'
                 },
-                timeout=15
+                timeout=10
             )
 
         if not resp.ok:
             conn.execute("UPDATE cloud_accounts SET token_status = 'expired' WHERE account_id = ?", (account_id,))
             conn.commit()
+            _TOKEN_MEM_CACHE.pop(account_id, None)
             return None
 
         tok_data = resp.json()
         new_access = tok_data.get('access_token')
         new_refresh = tok_data.get('refresh_token', refresh_token)
         expires_in = int(tok_data.get('expires_in', 3500))
+        new_exp = time.time() + expires_in
 
         conn.execute(
             """
@@ -88,9 +113,10 @@ def get_valid_account_token(account_id: str):
             SET access_token = ?, refresh_token = ?, expires_at = ?, token_status = 'valid'
             WHERE account_id = ?
             """,
-            (new_access, new_refresh, time.time() + expires_in, account_id)
+            (new_access, new_refresh, new_exp, account_id)
         )
         conn.commit()
+        _TOKEN_MEM_CACHE[account_id] = (new_access, new_exp)
         return new_access
 
     except Exception as e:
@@ -102,13 +128,14 @@ def get_valid_account_token(account_id: str):
 
 
 # ========================================================================
-# 🔄 AUTO-SYNC ALREADY MOUNTED CLOUD FOLDERS WHEN ACCOUNT RECONNECTS
+# 🔄 AUTO-SYNC ALREADY MOUNTED CLOUD FOLDERS
 # ========================================================================
 def refresh_mounted_assets_for_account(account_id: str, provider: str, token: str, account_name: str):
-    """Automatically refreshes the folder tree of all previously mounted assets for a reconnected cloud account."""
+    """Refreshes the folder tree of all mounted assets for a cloud account."""
     if not account_id or not token:
         return
 
+    invalidate_cloud_dir_cache(account_id)
     conn = None
     try:
         conn = get_db_connection()
@@ -120,7 +147,7 @@ def refresh_mounted_assets_for_account(account_id: str, provider: str, token: st
         for row in rows:
             cid = row['cloud_id']
             if row['type'] == 'folder':
-                fresh_children = _fetch_cloud_folder_children(provider, token, cid, account_id, account_name, depth=0)
+                fresh_children = _fetch_cloud_folder_children(provider, token, cid, account_id, account_name, depth=0, max_depth=8)
                 conn.execute(
                     """
                     UPDATE imported_assets
@@ -140,6 +167,52 @@ def refresh_mounted_assets_for_account(account_id: str, provider: str, token: st
     finally:
         if conn:
             conn.close()
+
+
+@cloud_bp.route('/api/cloud/sync-all', methods=['POST'])
+def sync_all_mounted_cloud_assets():
+    """Background sync endpoint: refreshes all enabled mounted cloud folders in parallel without blocking initial UI."""
+    if not session.get('is_authenticated'):
+        return jsonify({"error": "Unauthorized"}), 403
+
+    accounts = [dict(a) for a in get_all_cloud_accounts_db() if a['is_enabled']]
+    assets = [dict(r) for r in get_db_connection().execute("SELECT * FROM imported_assets WHERE type = 'folder'").fetchall()]
+    if not accounts or not assets:
+        return jsonify({"success": True, "updated": 0})
+
+    acc_lookup = {a['account_id']: a for a in accounts}
+
+    def _sync_one(asset):
+        acc_id = asset.get('account_id')
+        acc = acc_lookup.get(acc_id)
+        if not acc:
+            return None
+        tok = get_valid_account_token(acc_id)
+        if not tok:
+            return None
+        label = acc['custom_name'] or acc['email'] or acc_id
+        children = _fetch_cloud_folder_children(acc['provider'], tok, asset['cloud_id'], acc_id, label, depth=0, max_depth=8)
+        return (asset['cloud_id'], label, json.dumps(children))
+
+    updated_count = 0
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        results = list(pool.map(_sync_one, assets))
+
+    conn = get_db_connection()
+    try:
+        for item in results:
+            if item:
+                cid, label, children_json = item
+                conn.execute(
+                    "UPDATE imported_assets SET children_data = ?, account_name = ? WHERE cloud_id = ?",
+                    (children_json, label, cid)
+                )
+                updated_count += 1
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"success": True, "updated": updated_count})
 
 
 # ========================================================================
@@ -193,12 +266,15 @@ def update_cloud_account():
     if not account_id:
         return jsonify({"success": False, "error": "Account ID required"}), 400
 
+    invalidate_cloud_dir_cache(account_id)
     conn = None
     try:
         conn = get_db_connection()
         if action == 'toggle':
             is_enabled = 1 if data.get('is_enabled') else 0
             conn.execute("UPDATE cloud_accounts SET is_enabled = ? WHERE account_id = ?", (is_enabled, account_id))
+            if not is_enabled:
+                _TOKEN_MEM_CACHE.pop(account_id, None)
         elif action == 'rename':
             custom_name = (data.get('custom_name') or '').strip()
             acc_row = conn.execute(
@@ -211,6 +287,7 @@ def update_cloud_account():
             conn.execute("UPDATE cloud_accounts SET custom_name = ? WHERE account_id = ?", (custom_name, account_id))
             conn.execute("UPDATE imported_assets SET account_name = ? WHERE account_id = ?", (effective_asset_name, account_id))
         elif action == 'delete':
+            _TOKEN_MEM_CACHE.pop(account_id, None)
             conn.execute("DELETE FROM cloud_accounts WHERE account_id = ?", (account_id,))
             conn.execute("DELETE FROM imported_assets WHERE account_id = ?", (account_id,))
             conn.execute("DELETE FROM print_queue WHERE account_id = ?", (account_id,))
@@ -231,7 +308,6 @@ def update_cloud_account():
 # ========================================================================
 @cloud_bp.route('/api/cloud/oauth-url/<provider>', methods=['POST'])
 def generate_cloud_oauth_url(provider):
-    """Generates OAuth 2.0 authorization URL using dynamic host URL to prevent redirect_uri_mismatch."""
     if not session.get('is_authenticated'):
         return jsonify({"error": "Unauthorized"}), 403
 
@@ -285,7 +361,6 @@ def generate_cloud_oauth_url(provider):
 
 @cloud_bp.route('/api/google/callback')
 def google_cloud_oauth_callback():
-    """Exchanges Google auth code for tokens, links account, and auto-syncs previously mounted folders."""
     code = request.args.get('code')
     if not code:
         return "<script>window.close();</script>", 400
@@ -324,6 +399,7 @@ def google_cloud_oauth_callback():
         ).json()
         email = (profile.get('email') or 'google_user@gmail.com').lower()
         effective_label = custom_name if custom_name else email
+        exp_ts = time.time() + expires_in
 
         conn = get_db_connection()
         existing = conn.execute(
@@ -340,7 +416,7 @@ def google_cloud_oauth_callback():
                 SET owner_id = ?, custom_name = ?, access_token = ?, refresh_token = ?, expires_at = ?, is_enabled = 1, token_status = 'valid'
                 WHERE account_id = ?
                 """,
-                (owner_id, custom_name, access_token, final_refresh, time.time() + expires_in, acc_id)
+                (owner_id, custom_name, access_token, final_refresh, exp_ts, acc_id)
             )
         else:
             acc_id = f"gdrv_{uuid.uuid4().hex[:8]}"
@@ -350,10 +426,10 @@ def google_cloud_oauth_callback():
                 (account_id, owner_id, provider, custom_name, email, access_token, refresh_token, expires_at, is_enabled, token_status)
                 VALUES (?, ?, 'google', ?, ?, ?, ?, ?, 1, 'valid')
                 """,
-                (acc_id, owner_id, custom_name, email, access_token, refresh_token, time.time() + expires_in)
+                (acc_id, owner_id, custom_name, email, access_token, refresh_token, exp_ts)
             )
         conn.commit()
-
+        _TOKEN_MEM_CACHE[acc_id] = (access_token, exp_ts)
         refresh_mounted_assets_for_account(acc_id, 'google', access_token, effective_label)
 
         return """
@@ -374,7 +450,6 @@ def google_cloud_oauth_callback():
 
 @cloud_bp.route('/api/onedrive/callback')
 def onedrive_cloud_oauth_callback():
-    """Exchanges Microsoft auth code for tokens, links account, and auto-syncs previously mounted folders."""
     code = request.args.get('code')
     if not code:
         return "<script>window.close();</script>", 400
@@ -414,6 +489,7 @@ def onedrive_cloud_oauth_callback():
         ).json()
         email = (me.get('mail') or me.get('userPrincipalName') or 'onedrive_user@outlook.com').lower()
         effective_label = custom_name if custom_name else email
+        exp_ts = time.time() + expires_in
 
         conn = get_db_connection()
         existing = conn.execute(
@@ -430,7 +506,7 @@ def onedrive_cloud_oauth_callback():
                 SET owner_id = ?, custom_name = ?, access_token = ?, refresh_token = ?, expires_at = ?, is_enabled = 1, token_status = 'valid'
                 WHERE account_id = ?
                 """,
-                (owner_id, custom_name, access_token, final_refresh, time.time() + expires_in, acc_id)
+                (owner_id, custom_name, access_token, final_refresh, exp_ts, acc_id)
             )
         else:
             acc_id = f"odrv_{uuid.uuid4().hex[:8]}"
@@ -440,10 +516,10 @@ def onedrive_cloud_oauth_callback():
                 (account_id, owner_id, provider, custom_name, email, access_token, refresh_token, expires_at, is_enabled, token_status)
                 VALUES (?, ?, 'onedrive', ?, ?, ?, ?, ?, 1, 'valid')
                 """,
-                (acc_id, owner_id, custom_name, email, access_token, refresh_token, time.time() + expires_in)
+                (acc_id, owner_id, custom_name, email, access_token, refresh_token, exp_ts)
             )
         conn.commit()
-
+        _TOKEN_MEM_CACHE[acc_id] = (access_token, exp_ts)
         refresh_mounted_assets_for_account(acc_id, 'onedrive', access_token, effective_label)
 
         return """
@@ -463,7 +539,7 @@ def onedrive_cloud_oauth_callback():
 
 
 # ========================================================================
-# 📂 CLOUD DRIVE FILE PICKER & RECURSIVE DIRECTORY MOUNT / UNMOUNT
+# 📂 PARALLEL CLOUD FOLDER SCANNER & CACHED BROWSE PICKER
 # ========================================================================
 def _fetch_cloud_folder_children(
     provider: str,
@@ -472,10 +548,10 @@ def _fetch_cloud_folder_children(
     account_id: str,
     account_name: str,
     depth: int = 0,
-    max_depth: int = 12,
+    max_depth: int = 8,
     visited: set = None
 ):
-    """Recursively fetches folders and supported files down to all nested child levels safely."""
+    """Fetches folders and supported files with parallel sub-folder traversal for high speed."""
     if depth > max_depth:
         return []
     if visited is None:
@@ -486,6 +562,7 @@ def _fetch_cloud_folder_children(
 
     headers = {'Authorization': f'Bearer {token}'}
     items = []
+    subfolders = []
 
     try:
         if provider == 'google':
@@ -498,7 +575,7 @@ def _fetch_cloud_folder_children(
                     'fields': 'files(id, name, mimeType, size)',
                     'pageSize': 250
                 },
-                timeout=15
+                timeout=10
             )
             if not resp.ok:
                 return []
@@ -511,14 +588,7 @@ def _fetch_cloud_folder_children(
                 ext = name.rsplit('.', 1)[-1].lower() if '.' in name else ''
 
                 if is_folder:
-                    children = (
-                        _fetch_cloud_folder_children(
-                            provider, token, cid, account_id, account_name,
-                            depth=depth + 1, max_depth=max_depth, visited=visited
-                        )
-                        if depth < max_depth else []
-                    )
-                    items.append({
+                    folder_node = {
                         'name': name,
                         'type': 'folder',
                         'file_type': 'folder',
@@ -526,8 +596,11 @@ def _fetch_cloud_folder_children(
                         'account_id': account_id,
                         'account_name': account_name,
                         'provider': 'google',
-                        'children': children
-                    })
+                        'children': []
+                    }
+                    items.append(folder_node)
+                    if depth < max_depth:
+                        subfolders.append(folder_node)
                 elif ext in ALLOWED_EXTENSIONS:
                     items.append({
                         'name': name,
@@ -545,7 +618,7 @@ def _fetch_cloud_folder_children(
                 if folder_id == 'root'
                 else f'https://graph.microsoft.com/v1.0/me/drive/items/{folder_id}/children'
             )
-            resp = requests.get(url, headers=headers, timeout=15)
+            resp = requests.get(url, headers=headers, timeout=10)
             if not resp.ok:
                 return []
 
@@ -556,14 +629,7 @@ def _fetch_cloud_folder_children(
                 ext = name.rsplit('.', 1)[-1].lower() if '.' in name else ''
 
                 if is_folder:
-                    children = (
-                        _fetch_cloud_folder_children(
-                            provider, token, cid, account_id, account_name,
-                            depth=depth + 1, max_depth=max_depth, visited=visited
-                        )
-                        if depth < max_depth else []
-                    )
-                    items.append({
+                    folder_node = {
                         'name': name,
                         'type': 'folder',
                         'file_type': 'folder',
@@ -571,8 +637,11 @@ def _fetch_cloud_folder_children(
                         'account_id': account_id,
                         'account_name': account_name,
                         'provider': 'onedrive',
-                        'children': children
-                    })
+                        'children': []
+                    }
+                    items.append(folder_node)
+                    if depth < max_depth:
+                        subfolders.append(folder_node)
                 elif ext in ALLOWED_EXTENSIONS:
                     items.append({
                         'name': name,
@@ -584,6 +653,18 @@ def _fetch_cloud_folder_children(
                         'account_name': account_name,
                         'provider': 'onedrive'
                     })
+
+        # Fetch all child subfolders concurrently instead of one-by-one
+        if subfolders:
+            def _load_sub(node):
+                node['children'] = _fetch_cloud_folder_children(
+                    provider, token, node['cloud_id'], account_id, account_name,
+                    depth=depth + 1, max_depth=max_depth, visited=set(visited)
+                )
+
+            with ThreadPoolExecutor(max_workers=min(6, len(subfolders))) as pool:
+                list(pool.map(_load_sub, subfolders))
+
     except Exception as e:
         print(f"[CLOUD FOLDER SCAN WARNING] ({provider}/{folder_id}): {e}")
 
@@ -592,7 +673,7 @@ def _fetch_cloud_folder_children(
 
 @cloud_bp.route('/api/cloud/fetch/<account_id>', methods=['POST'])
 def browse_cloud_account_root(account_id):
-    """Fetches direct children of a cloud folder for interactive drill-down browsing in Cloud Picker."""
+    """Fetches immediate children of a cloud folder with 2-minute RAM caching for instant browsing."""
     if not session.get('is_authenticated'):
         return jsonify({"error": "Unauthorized"}), 403
 
@@ -600,13 +681,26 @@ def browse_cloud_account_root(account_id):
     if not acc:
         return jsonify({"authenticated": False, "error": "Account not found"}), 404
 
-    token = get_valid_account_token(account_id)
-    if not token:
-        return jsonify({"authenticated": False, "error": "Token expired. Please reconnect."}), 401
-
     data = request.get_json(silent=True) or {}
     folder_id = data.get('folder_id') or 'root'
-    label = acc['custom_name'] or acc['email'] or acc['account_id']
+    force_refresh = bool(data.get('force_refresh'))
+    cache_key = (account_id, folder_id, 0)
+
+    tree = None
+    now = time.time()
+    if not force_refresh and cache_key in _CLOUD_DIR_MEM_CACHE:
+        ts, cached_items = _CLOUD_DIR_MEM_CACHE[cache_key]
+        if (now - ts) < _DIR_CACHE_TTL:
+            tree = [dict(i) for i in cached_items]
+
+    if tree is None:
+        token = get_valid_account_token(account_id)
+        if not token:
+            return jsonify({"authenticated": False, "error": "Token expired. Please reconnect."}), 401
+        label = acc['custom_name'] or acc['email'] or acc['account_id']
+        # max_depth=0 fetches ONLY current folder's direct children in 1 single API call (<250ms)
+        tree = _fetch_cloud_folder_children(acc['provider'], token, folder_id, account_id, label, depth=0, max_depth=0)
+        _CLOUD_DIR_MEM_CACHE[cache_key] = (now, [dict(i) for i in tree])
 
     mounted_ids = set()
     mounted_names = set()
@@ -624,8 +718,6 @@ def browse_cloud_account_root(account_id):
         if conn:
             conn.close()
 
-    # Fetch immediate children (max_depth=1) for instant right-pane navigation
-    tree = _fetch_cloud_folder_children(acc['provider'], token, folder_id, account_id, label, depth=0, max_depth=1)
     for item in tree:
         item['is_mounted'] = (item['cloud_id'] in mounted_ids) or (item['name'] in mounted_names)
 
@@ -656,7 +748,7 @@ def mount_cloud_asset_to_vault():
 
     children = []
     if asset_type == 'folder':
-        children = _fetch_cloud_folder_children(provider, token, cloud_id, account_id, account_name, depth=0, max_depth=12)
+        children = _fetch_cloud_folder_children(provider, token, cloud_id, account_id, account_name, depth=0, max_depth=8)
 
     conn = None
     try:

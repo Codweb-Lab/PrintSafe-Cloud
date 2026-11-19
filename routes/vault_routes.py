@@ -489,7 +489,7 @@ def fetch_vault_list():
             return sorted(res, key=lambda x: (x['type'] != 'folder', x['name'].lower()))
         vault_tree.extend(scan_user_dir(user_root))
 
-    # Mounted Cloud Drive Assets (Hide when account is toggled OFF; Show instantly when toggled ON)
+    # Mounted Cloud Drive Assets (Instant SQLite Cache-First Read — 0 Blocking Cloud API Calls on Refresh)
     try:
         acc_map = {}
         disabled_providers = set()
@@ -509,7 +509,6 @@ def fetch_vault_list():
                 "name": r["custom_name"] if r["custom_name"] else r["email"],
                 "enabled": is_en,
                 "expired": (is_en and tok is None),
-                "token": tok,
                 "provider": prov
             }
 
@@ -533,27 +532,8 @@ def fetch_vault_list():
             try:
                 if row["children_data"] and not is_expired:
                     inner_children = json.loads(row["children_data"])
-                if row["type"] == "folder" and not is_expired and acc_id in acc_map and acc_map[acc_id]["token"]:
-                    fresh = _fetch_cloud_folder_children(
-                        prov,
-                        acc_map[acc_id]["token"],
-                        row["cloud_id"],
-                        acc_id,
-                        effective_acc_name,
-                        depth=0,
-                        max_depth=12
-                    )
-                    if fresh is not None:
-                        inner_children = fresh
-                        c_upd = get_db_connection()
-                        c_upd.execute(
-                            "UPDATE imported_assets SET children_data = ?, account_name = ? WHERE cloud_id = ?",
-                            (json.dumps(fresh), effective_acc_name, row["cloud_id"])
-                        )
-                        c_upd.commit()
-                        c_upd.close()
             except Exception:
-                pass
+                inner_children = []
 
             vault_tree.append({
                 "name": row["name"],
