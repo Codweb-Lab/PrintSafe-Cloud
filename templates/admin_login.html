@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-style="carbon">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PrintSafe Cloud — Admin Sign In</title>
+  <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='images/logo3.svg') }}" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v=10.0" />
+</head>
+<body>
+  <div style="flex:1; display:flex; align-items:center; justify-content:center; padding:24px;">
+    <div class="card" style="max-width: 410px; width:100%; padding:28px 26px;">
+      <!-- Centered Brand Header -->
+      <div style="text-align:center; margin-bottom:20px;">
+        <div style="width:56px; height:56px; margin:0 auto 12px auto; background:rgba(69,137,255,0.12); border:1px solid rgba(69,137,255,0.28); border-radius:14px; display:flex; align-items:center; justify-content:center;">
+          <img src="{{ url_for('static', filename='images/logo3.svg') }}" alt="PrintSafe Logo" style="width:34px; height:34px;" />
+        </div>
+        <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:4px;">
+          <h1 style="margin:0; font-size:22px; font-weight:700; letter-spacing:-0.4px; color:var(--text-primary);">
+            PrintSafe <span style="color:var(--info);">Cloud</span>
+          </h1>
+          <span class="version-pill">{{ app_version or 'v2.2.0' }}</span>
+        </div>
+        <div style="font-size:11px; font-weight:700; color:var(--info); letter-spacing:0.6px; text-transform:uppercase;">
+          Zero-Trust Control Plane
+        </div>
+      </div>
+
+      <div style="border-top:1px solid var(--border); padding-top:18px;">
+        <h2 style="margin:0 0 4px; font-size:17px; font-weight:700;">Administrator Sign In</h2>
+        <p style="margin:0 0 16px; font-size:12.5px; color:var(--text-secondary);">Authenticate with your Master Administrator Secret Key.</p>
+        <label class="field-label">Administrator Secret Key</label>
+        <input type="password" id="admin-secret-input" class="input" placeholder="Enter Secret Key..." style="margin-bottom:14px;" autofocus onkeydown="if(event.key==='Enter') submitAdminLogin()">
+        <div id="admin-login-err" style="color:var(--danger);font-size:12px;margin-bottom:10px;display:none;"></div>
+        <button type="button" id="admin-login-btn" onclick="submitAdminLogin()" class="btn btn-sky" style="width:100%;justify-content:center;">
+          Continue to Console <i class="ri-arrow-right-line"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <span>© 2026 PrintSafe-Cloud. All rights reserved.</span>
+    <span>Made with <span style="color:#ef4444;">♥</span> by <strong>Kapil Jangid @Codweb Lab</strong></span>
+  </footer>
+
+  <script>
+    // Apply saved theme/design style on login card too
+    (function () {
+      const savedTheme = localStorage.getItem("ps_admin_theme") || "dark";
+      const savedStyle = localStorage.getItem("ps_admin_style") || "carbon";
+      document.documentElement.setAttribute("data-theme", savedTheme === "system"
+        ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+        : savedTheme);
+      document.documentElement.setAttribute("data-style", savedStyle);
+    })();
+
+    async function submitAdminLogin() {
+      const input = document.getElementById("admin-secret-input");
+      const errBox = document.getElementById("admin-login-err");
+      const btn = document.getElementById("admin-login-btn");
+      const secret = (input?.value || "").trim();
+
+      if (!secret) {
+        errBox.innerText = "Please enter the Master Administrator Secret Key.";
+        errBox.style.display = "block";
+        input?.focus();
+        return;
+      }
+
+      errBox.style.display = "none";
+      btn.disabled = true;
+      btn.innerHTML = 'Authenticating...';
+
+      try {
+        const res = await fetch("/api/admin/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ secret_key: secret, password: secret })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          errBox.innerText = data.error || "Invalid Administrator Secret Key!";
+          errBox.style.display = "block";
+          return;
+        }
+        window.location.replace(data.redirect || "/admin");
+      } catch (e) {
+        errBox.innerText = "Network error connecting to control plane.";
+        errBox.style.display = "block";
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = 'Continue to Console <i class="ri-arrow-right-line"></i>';
+      }
+    }
+  </script>
+</body>
+</html>

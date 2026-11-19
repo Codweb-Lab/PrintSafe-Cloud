@@ -10,14 +10,13 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v=10.0" />
 </head>
 <body>
-  <!-- HEADER MATCHED TO IMAGE 2 + IMAGE 3 DESIGN DROPDOWN (NO HEADER SEARCH) -->
   <header class="topbar">
     <div class="brand-group">
       <div class="brand-logo-wrap">
         <img src="{{ url_for('static', filename='images/logo3.svg') }}" alt="Logo">
       </div>
       <div class="brand-title">PrintSafe<br>Cloud</div>
-      <span class="version-pill">v2.2.0</span>
+      <span class="version-pill">{{ app_version or 'v2.2.0' }}</span>
     </div>
 
     <div class="header-right-tools">
@@ -29,7 +28,7 @@
         <i class="ri-information-line"></i> <span class="hide-sm">User Portal</span>
       </a>
 
-      <!-- UI DESIGN SYSTEM DROPDOWN (EXACT MATCH TO IMAGE 3) -->
+      <!-- UI DESIGN SYSTEM DROPDOWN -->
       <div class="design-dropdown-wrap" id="admin-design-dropdown">
         <button type="button" class="design-trigger-btn" onclick="toggleDesignStyleMenu(event)">
           <i class="ri-palette-line" style="color:var(--info);"></i>
@@ -68,21 +67,6 @@
     </div>
   </header>
 
-  {% if not is_admin %}
-  <div style="flex:1; display:flex; align-items:center; justify-content:center; padding:20px;">
-    <div class="card" style="max-width: 400px; width:100%;">
-      <div style="font-size:11px;font-weight:700;color:var(--info);margin-bottom:6px;text-transform:uppercase;">Zero-Trust Control Plane</div>
-      <h2 style="margin:0 0 6px;font-size:20px;">Administrator Sign In</h2>
-      <p style="margin:0 0 18px;font-size:12.5px;color:var(--text-secondary);">Authenticate with your Master Administrator Secret Key.</p>
-      <label class="field-label">Administrator Secret Key</label>
-      <input type="password" id="admin-secret-input" class="input" placeholder="Enter Secret Key..." style="margin-bottom:14px;" onkeydown="if(event.key==='Enter') submitAdminLogin()">
-      <div id="admin-login-err" style="color:var(--danger);font-size:12px;margin-bottom:10px;display:none;"></div>
-      <button onclick="submitAdminLogin()" class="btn btn-sky" style="width:100%;justify-content:center;">
-        Continue to Console <i class="ri-arrow-right-line"></i>
-      </button>
-    </div>
-  </div>
-  {% else %}
   <div class="admin-shell">
     <aside class="admin-sidebar">
       <div class="sidebar-top-links">
@@ -120,7 +104,7 @@
     </aside>
 
     <main class="admin-main">
-      <!-- 1. HOSTED SERVER VAULT EXPLORER (WITH IN-EXPLORER SEARCH + RIGHT-CLICK CONTEXT MENU) -->
+      <!-- 1. HOSTED SERVER VAULT EXPLORER -->
       <section id="panel-vault" class="admin-panel active">
         <div class="explorer-filter-bar">
           <div class="filter-pills">
@@ -130,7 +114,6 @@
             <button type="button" class="filter-pill" onclick="setVaultFilter('images', this)"><i class="ri-image-line"></i> Images</button>
           </div>
 
-          <!-- Search Input Placed Exclusively Inside Explorer -->
           <div class="explorer-search-box">
             <i class="ri-search-line"></i>
             <input type="text" id="explorer-search-input" class="explorer-search-input" placeholder="Search files or folders..." oninput="renderVaultExplorerItems(this.value)">
@@ -271,7 +254,6 @@
       </section>
     </main>
   </div>
-  {% endif %}
 
   <!-- CUSTOM RIGHT-CLICK CONTEXT MENU FOR EXPLORER -->
   <div id="vault-context-menu" class="vault-context-menu"></div>
