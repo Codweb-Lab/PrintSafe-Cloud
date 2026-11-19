@@ -208,7 +208,6 @@ def delete_vault_file():
     remote_path = (data.get('remote_path') or '').strip()
 
     try:
-        # 1. Delete from Hosting SFTP / FTP Server
         if provider in ('sftp', 'ftp') and storage_id and remote_path:
             conn = None
             try:
@@ -221,7 +220,6 @@ def delete_vault_file():
                 if conn:
                     conn.close()
 
-        # 2. Delete from Google Drive or Microsoft OneDrive
         elif provider in ('google', 'onedrive') and cloud_id:
             acc = get_cloud_account_db(account_id) if account_id else get_first_enabled_cloud_account_db()
             if not acc:
@@ -240,7 +238,6 @@ def delete_vault_file():
             if r.status_code not in (200, 204):
                 return jsonify({"success": False, "error": f"Cloud provider rejected deletion ({r.status_code}): {r.text[:120]}"}), 502
 
-            # Also prune deleted item from cached imported_assets children JSON if present
             conn = None
             try:
                 conn = get_db_connection()
@@ -263,7 +260,6 @@ def delete_vault_file():
                 if conn:
                     conn.close()
 
-        # 3. Delete from Local Encrypted Vault
         elif relative_path:
             user_id = session.get('user_id', 'shared')
             user_root = os.path.join(DOCUMENTS_DIR, secure_filename(user_id))
@@ -274,7 +270,6 @@ def delete_vault_file():
         else:
             return jsonify({"success": False, "error": "Insufficient file identifiers to delete."}), 400
 
-        # Remove from To Be Printed queue if present & broadcast sync
         if relative_path:
             remove_from_print_queue_db(relative_path)
         record_sync_event_db('file_deleted', os.path.basename(relative_path or remote_path or cloud_id), provider.upper())
@@ -286,7 +281,7 @@ def delete_vault_file():
 
 
 # ========================================================================
-# 🖨️ "TO BE PRINTED" WISHLIST QUEUE & DIRECT UPLOAD ENDPOINTS
+# 🖨️ "TO BE PRINTED" WISHLIST QUEUE & DIRECT CLOUD/REMOTE UPLOAD ENDPOINT
 # ========================================================================
 @vault_bp.route('/api/print-queue', methods=['GET', 'POST', 'DELETE'])
 def manage_print_queue():
@@ -311,8 +306,9 @@ def manage_print_queue():
 
 @vault_bp.route('/api/upload-file', methods=['POST'])
 def upload_file_to_vault():
-    """Uploads files directly to active SFTP/FTP folder if inside remote storage, else user vault."""
-    if not session.get('is_authenticated'):
+    """Uploads files directly into the active mounted Cloud Drive (Google/OneDrive) or SFTP/FTP folder."""
+    from routes.cloud_routes import get_valid_account_token
+    if not session.get('is_authenticated') or session.get('login_type') == 'qr_restricted':
         return jsonify({"success": False, "error": "Unauthorized Access!"}), 403
     if 'file' not in request.files:
         return jsonify({"success": False, "error": "No file selected"}), 400
@@ -321,15 +317,90 @@ def upload_file_to_vault():
     target_folder = request.form.get('folder_path', '').strip('/')
     storage_id = (request.form.get('storage_id') or '').strip()
     remote_dir = (request.form.get('remote_dir') or '').strip()
+    cloud_folder_id = (request.form.get('cloud_folder_id') or '').strip()
+    account_id = (request.form.get('account_id') or '').strip()
+    provider = (request.form.get('provider') or '').strip().lower()
 
     if file.filename == '' or not allowed_file(file.filename):
         return jsonify({"success": False, "error": "Invalid file or unsupported extension!"}), 400
 
     filename = secure_filename(file.filename)
     raw_bytes = file.read()
+    mimetype = file.mimetype or 'application/octet-stream'
     ext = filename.rsplit('.', 1)[1].lower()
     file_type = "notebook" if ext == 'ipynb' else ("pdf" if ext == 'pdf' else "image")
 
+    # 1. Direct Upload to Active Cloud Drive Folder (Google Drive or OneDrive)
+    if cloud_folder_id and account_id and provider in ('google', 'onedrive'):
+        acc = get_cloud_account_db(account_id)
+        if not acc:
+            return jsonify({"success": False, "error": "Cloud account not found or disabled."}), 404
+        token = get_valid_account_token(account_id)
+        if not token:
+            return jsonify({"success": False, "error": "Cloud session expired. Please reconnect your drive."}), 401
+
+        acc_label = acc['custom_name'] or acc['email'] or acc['account_id']
+        try:
+            if provider == 'google':
+                boundary = f"printsafe_{uuid.uuid4().hex}"
+                metadata = json.dumps({"name": filename, "parents": [cloud_folder_id]}).encode('utf-8')
+                body = (
+                    f"--{boundary}\r\n"
+                    f"Content-Type: application/json; charset=UTF-8\r\n\r\n"
+                ).encode('utf-8') + metadata + (
+                    f"\r\n--{boundary}\r\n"
+                    f"Content-Type: {mimetype}\r\n\r\n"
+                ).encode('utf-8') + raw_bytes + f"\r\n--{boundary}--".encode('utf-8')
+
+                up_resp = requests.post(
+                    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,size",
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type": f"multipart/related; boundary={boundary}"
+                    },
+                    data=body,
+                    timeout=30
+                )
+                if not up_resp.ok:
+                    return jsonify({"success": False, "error": f"Google Drive upload failed: {up_resp.text[:140]}"}), 502
+                up_json = up_resp.json()
+                uploaded_cloud_id = up_json.get("id")
+                uploaded_size = int(up_json.get("size") or len(raw_bytes))
+            else:
+                up_url = f"https://graph.microsoft.com/v1.0/me/drive/items/{cloud_folder_id}:/{filename}:/content"
+                up_resp = requests.put(
+                    up_url,
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type": mimetype
+                    },
+                    data=raw_bytes,
+                    timeout=30
+                )
+                if not up_resp.ok:
+                    return jsonify({"success": False, "error": f"OneDrive upload failed: {up_resp.text[:140]}"}), 502
+                up_json = up_resp.json()
+                uploaded_cloud_id = up_json.get("id")
+                uploaded_size = int(up_json.get("size") or len(raw_bytes))
+
+            record_sync_event_db('file_uploaded', filename, target_folder or acc_label)
+            return jsonify({
+                "success": True,
+                "file_item": {
+                    "name": filename,
+                    "type": "file",
+                    "file_type": file_type,
+                    "size": uploaded_size,
+                    "cloud_id": uploaded_cloud_id,
+                    "account_id": account_id,
+                    "provider": provider,
+                    "account_name": acc_label
+                }
+            }), 200
+        except Exception as e:
+            return jsonify({"success": False, "error": f"Cloud upload error: {e}"}), 500
+
+    # 2. Direct Upload to Active Hosting SFTP / FTP Folder
     if storage_id:
         conn = None
         try:
@@ -359,33 +430,11 @@ def upload_file_to_vault():
             if conn:
                 conn.close()
 
-    user_id = session.get('user_id', 'shared')
-    user_root = os.path.join(DOCUMENTS_DIR, secure_filename(user_id))
-    destination_dir = os.path.normpath(os.path.join(user_root, target_folder))
-
-    if not destination_dir.startswith(os.path.normpath(user_root)):
-        return jsonify({"success": False, "error": "Invalid directory path!"}), 403
-
-    try:
-        os.makedirs(destination_dir, exist_ok=True)
-        save_path = os.path.join(destination_dir, filename)
-        with open(save_path, "wb") as f:
-            f.write(encrypt_bytes(raw_bytes))
-
-        record_sync_event_db('file_uploaded', filename, target_folder or 'My Vault')
-        return jsonify({
-            "success": True,
-            "file_item": {
-                "name": filename,
-                "type": "file",
-                "file_type": file_type,
-                "size": len(raw_bytes),
-                "provider": "local",
-                "account_name": "Encrypted Vault"
-            }
-        }), 200
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+    # 3. Reject root-level uploads when no target mounted folder is open
+    return jsonify({
+        "success": False,
+        "error": "Open a mounted Cloud Drive or SFTP/FTP folder first before uploading files."
+    }), 400
 
 
 # ========================================================================
@@ -394,7 +443,7 @@ def upload_file_to_vault():
 @vault_bp.route('/fetch-vault-list', methods=['POST'])
 def fetch_vault_list():
     """Builds the unified directory tree from User Vault, Cloud Drives, and Active SFTP/FTP."""
-    from routes.cloud_routes import get_valid_account_token
+    from routes.cloud_routes import get_valid_account_token, _fetch_cloud_folder_children
     data = request.get_json(silent=True) or {}
     session_id = data.get('session_id') or session.get('session_id')
     if session_id:
@@ -440,11 +489,8 @@ def fetch_vault_list():
             return sorted(res, key=lambda x: (x['type'] != 'folder', x['name'].lower()))
         vault_tree.extend(scan_user_dir(user_root))
 
-    # 2. Mounted Cloud Drive Assets (With Auto-Sync for Reconnected Accounts)
-
-    # 2. Mounted Cloud Drive Assets (Hide when account is toggled OFF; Show instantly when toggled ON)
+    # Mounted Cloud Drive Assets (Hide when account is toggled OFF; Show instantly when toggled ON)
     try:
-        from routes.cloud_routes import _fetch_cloud_folder_children
         acc_map = {}
         disabled_providers = set()
         enabled_providers = set()
@@ -471,7 +517,6 @@ def fetch_vault_list():
             acc_id = row["account_id"]
             prov = (row["provider"] or "google").lower()
 
-            # Hide (without unmounting) if linked account is disabled
             if acc_id and acc_id in acc_map:
                 if not acc_map[acc_id]["enabled"]:
                     continue
@@ -495,7 +540,8 @@ def fetch_vault_list():
                         row["cloud_id"],
                         acc_id,
                         effective_acc_name,
-                        depth=0
+                        depth=0,
+                        max_depth=12
                     )
                     if fresh is not None:
                         inner_children = fresh

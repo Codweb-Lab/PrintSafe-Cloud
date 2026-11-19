@@ -102,7 +102,7 @@ def get_valid_account_token(account_id: str):
 
 
 # ========================================================================
-# 🔁 AUTO-SYNC ALREADY MOUNTED CLOUD FOLDERS WHEN ACCOUNT RECONNECTS
+# 🔄 AUTO-SYNC ALREADY MOUNTED CLOUD FOLDERS WHEN ACCOUNT RECONNECTS
 # ========================================================================
 def refresh_mounted_assets_for_account(account_id: str, provider: str, token: str, account_name: str):
     """Automatically refreshes the folder tree of all previously mounted assets for a reconnected cloud account."""
@@ -143,7 +143,7 @@ def refresh_mounted_assets_for_account(account_id: str, provider: str, token: st
 
 
 # ========================================================================
-# 📋 LIST, TOGGLE, RENAME & REMOVE CONNECTED CLOUD ACCOUNTS
+# ☁️ LIST, TOGGLE, RENAME & REMOVE CONNECTED CLOUD ACCOUNTS
 # ========================================================================
 @cloud_bp.route('/api/cloud/accounts', methods=['GET'])
 def list_connected_cloud_accounts():
@@ -201,8 +201,15 @@ def update_cloud_account():
             conn.execute("UPDATE cloud_accounts SET is_enabled = ? WHERE account_id = ?", (is_enabled, account_id))
         elif action == 'rename':
             custom_name = (data.get('custom_name') or '').strip()
+            acc_row = conn.execute(
+                "SELECT email, account_id FROM cloud_accounts WHERE account_id = ?",
+                (account_id,)
+            ).fetchone()
+            fallback_label = (acc_row['email'] or acc_row['account_id']) if acc_row else account_id
+            effective_asset_name = custom_name if custom_name else fallback_label
+
             conn.execute("UPDATE cloud_accounts SET custom_name = ? WHERE account_id = ?", (custom_name, account_id))
-            conn.execute("UPDATE imported_assets SET account_name = ? WHERE account_id = ?", (custom_name, account_id))
+            conn.execute("UPDATE imported_assets SET account_name = ? WHERE account_id = ?", (effective_asset_name, account_id))
         elif action == 'delete':
             conn.execute("DELETE FROM cloud_accounts WHERE account_id = ?", (account_id,))
             conn.execute("DELETE FROM imported_assets WHERE account_id = ?", (account_id,))
@@ -285,7 +292,7 @@ def google_cloud_oauth_callback():
 
     g_cfg = cloud_engine.google_config
     redirect_uri = session.get('active_google_redirect_uri') or f"{request.host_url.rstrip('/')}/api/google/callback"
-    custom_name = session.pop('pending_cloud_custom_name', '')
+    custom_name = (session.pop('pending_cloud_custom_name', '') or '').strip()
     owner_id = session.get('user_id', 'user')
 
     conn = None
@@ -316,7 +323,7 @@ def google_cloud_oauth_callback():
             timeout=10
         ).json()
         email = (profile.get('email') or 'google_user@gmail.com').lower()
-        display_label = custom_name or profile.get('name') or email
+        effective_label = custom_name if custom_name else email
 
         conn = get_db_connection()
         existing = conn.execute(
@@ -333,7 +340,7 @@ def google_cloud_oauth_callback():
                 SET owner_id = ?, custom_name = ?, access_token = ?, refresh_token = ?, expires_at = ?, is_enabled = 1, token_status = 'valid'
                 WHERE account_id = ?
                 """,
-                (owner_id, display_label, access_token, final_refresh, time.time() + expires_in, acc_id)
+                (owner_id, custom_name, access_token, final_refresh, time.time() + expires_in, acc_id)
             )
         else:
             acc_id = f"gdrv_{uuid.uuid4().hex[:8]}"
@@ -343,12 +350,11 @@ def google_cloud_oauth_callback():
                 (account_id, owner_id, provider, custom_name, email, access_token, refresh_token, expires_at, is_enabled, token_status)
                 VALUES (?, ?, 'google', ?, ?, ?, ?, ?, 1, 'valid')
                 """,
-                (acc_id, owner_id, display_label, email, access_token, refresh_token, time.time() + expires_in)
+                (acc_id, owner_id, custom_name, email, access_token, refresh_token, time.time() + expires_in)
             )
         conn.commit()
 
-        # Immediately refresh all previously mounted folders (e.g. 'ABC') for this Google account
-        refresh_mounted_assets_for_account(acc_id, 'google', access_token, display_label)
+        refresh_mounted_assets_for_account(acc_id, 'google', access_token, effective_label)
 
         return """
         <script>
@@ -375,7 +381,7 @@ def onedrive_cloud_oauth_callback():
 
     o_cfg = cloud_engine.onedrive_config
     redirect_uri = session.get('active_onedrive_redirect_uri') or f"{request.host_url.rstrip('/')}/api/onedrive/callback"
-    custom_name = session.pop('pending_cloud_custom_name', '')
+    custom_name = (session.pop('pending_cloud_custom_name', '') or '').strip()
     owner_id = session.get('user_id', 'user')
 
     conn = None
@@ -407,7 +413,7 @@ def onedrive_cloud_oauth_callback():
             timeout=10
         ).json()
         email = (me.get('mail') or me.get('userPrincipalName') or 'onedrive_user@outlook.com').lower()
-        display_label = custom_name or me.get('displayName') or email
+        effective_label = custom_name if custom_name else email
 
         conn = get_db_connection()
         existing = conn.execute(
@@ -424,7 +430,7 @@ def onedrive_cloud_oauth_callback():
                 SET owner_id = ?, custom_name = ?, access_token = ?, refresh_token = ?, expires_at = ?, is_enabled = 1, token_status = 'valid'
                 WHERE account_id = ?
                 """,
-                (owner_id, display_label, access_token, final_refresh, time.time() + expires_in, acc_id)
+                (owner_id, custom_name, access_token, final_refresh, time.time() + expires_in, acc_id)
             )
         else:
             acc_id = f"odrv_{uuid.uuid4().hex[:8]}"
@@ -434,12 +440,11 @@ def onedrive_cloud_oauth_callback():
                 (account_id, owner_id, provider, custom_name, email, access_token, refresh_token, expires_at, is_enabled, token_status)
                 VALUES (?, ?, 'onedrive', ?, ?, ?, ?, ?, 1, 'valid')
                 """,
-                (acc_id, owner_id, display_label, email, access_token, refresh_token, time.time() + expires_in)
+                (acc_id, owner_id, custom_name, email, access_token, refresh_token, time.time() + expires_in)
             )
         conn.commit()
 
-        # Immediately refresh all previously mounted folders for this OneDrive account
-        refresh_mounted_assets_for_account(acc_id, 'onedrive', access_token, display_label)
+        refresh_mounted_assets_for_account(acc_id, 'onedrive', access_token, effective_label)
 
         return """
         <script>
@@ -460,10 +465,24 @@ def onedrive_cloud_oauth_callback():
 # ========================================================================
 # 📂 CLOUD DRIVE FILE PICKER & RECURSIVE DIRECTORY MOUNT / UNMOUNT
 # ========================================================================
-def _fetch_cloud_folder_children(provider: str, token: str, folder_id: str, account_id: str, account_name: str, depth: int = 0):
-    """Recursively fetches folders and supported files (up to 3 levels) from Google Drive or OneDrive."""
-    if depth > 3:
+def _fetch_cloud_folder_children(
+    provider: str,
+    token: str,
+    folder_id: str,
+    account_id: str,
+    account_name: str,
+    depth: int = 0,
+    max_depth: int = 12,
+    visited: set = None
+):
+    """Recursively fetches folders and supported files down to all nested child levels safely."""
+    if depth > max_depth:
         return []
+    if visited is None:
+        visited = set()
+    if folder_id in visited:
+        return []
+    visited.add(folder_id)
 
     headers = {'Authorization': f'Bearer {token}'}
     items = []
@@ -477,7 +496,7 @@ def _fetch_cloud_folder_children(provider: str, token: str, folder_id: str, acco
                 params={
                     'q': query,
                     'fields': 'files(id, name, mimeType, size)',
-                    'pageSize': 200
+                    'pageSize': 250
                 },
                 timeout=15
             )
@@ -492,7 +511,13 @@ def _fetch_cloud_folder_children(provider: str, token: str, folder_id: str, acco
                 ext = name.rsplit('.', 1)[-1].lower() if '.' in name else ''
 
                 if is_folder:
-                    children = _fetch_cloud_folder_children(provider, token, cid, account_id, account_name, depth + 1)
+                    children = (
+                        _fetch_cloud_folder_children(
+                            provider, token, cid, account_id, account_name,
+                            depth=depth + 1, max_depth=max_depth, visited=visited
+                        )
+                        if depth < max_depth else []
+                    )
                     items.append({
                         'name': name,
                         'type': 'folder',
@@ -507,7 +532,7 @@ def _fetch_cloud_folder_children(provider: str, token: str, folder_id: str, acco
                     items.append({
                         'name': name,
                         'type': 'file',
-                        'file_type': 'pdf' if ext == 'pdf' else 'image',
+                        'file_type': 'notebook' if ext == 'ipynb' else ('pdf' if ext == 'pdf' else 'image'),
                         'size': int(f.get('size', 0)),
                         'cloud_id': cid,
                         'account_id': account_id,
@@ -531,7 +556,13 @@ def _fetch_cloud_folder_children(provider: str, token: str, folder_id: str, acco
                 ext = name.rsplit('.', 1)[-1].lower() if '.' in name else ''
 
                 if is_folder:
-                    children = _fetch_cloud_folder_children(provider, token, cid, account_id, account_name, depth + 1)
+                    children = (
+                        _fetch_cloud_folder_children(
+                            provider, token, cid, account_id, account_name,
+                            depth=depth + 1, max_depth=max_depth, visited=visited
+                        )
+                        if depth < max_depth else []
+                    )
                     items.append({
                         'name': name,
                         'type': 'folder',
@@ -546,7 +577,7 @@ def _fetch_cloud_folder_children(provider: str, token: str, folder_id: str, acco
                     items.append({
                         'name': name,
                         'type': 'file',
-                        'file_type': 'pdf' if ext == 'pdf' else 'image',
+                        'file_type': 'notebook' if ext == 'ipynb' else ('pdf' if ext == 'pdf' else 'image'),
                         'size': int(f.get('size', 0)),
                         'cloud_id': cid,
                         'account_id': account_id,
@@ -575,9 +606,8 @@ def browse_cloud_account_root(account_id):
 
     data = request.get_json(silent=True) or {}
     folder_id = data.get('folder_id') or 'root'
-    label = acc['custom_name'] or acc['email']
+    label = acc['custom_name'] or acc['email'] or acc['account_id']
 
-    # Fetch already mounted IDs/names so Picker marks them as Mounted with an Unmount option
     mounted_ids = set()
     mounted_names = set()
     conn = None
@@ -594,12 +624,13 @@ def browse_cloud_account_root(account_id):
         if conn:
             conn.close()
 
-    # depth=3 fetches only the immediate children of folder_id for fast interactive folder navigation
-    tree = _fetch_cloud_folder_children(acc['provider'], token, folder_id, account_id, label, depth=3)
+    # Fetch immediate children (max_depth=1) for instant right-pane navigation
+    tree = _fetch_cloud_folder_children(acc['provider'], token, folder_id, account_id, label, depth=0, max_depth=1)
     for item in tree:
         item['is_mounted'] = (item['cloud_id'] in mounted_ids) or (item['name'] in mounted_names)
 
     return jsonify({"authenticated": True, "tree": tree})
+
 
 @cloud_bp.route('/api/cloud/import', methods=['POST'])
 def mount_cloud_asset_to_vault():
@@ -625,7 +656,7 @@ def mount_cloud_asset_to_vault():
 
     children = []
     if asset_type == 'folder':
-        children = _fetch_cloud_folder_children(provider, token, cloud_id, account_id, account_name, depth=0)
+        children = _fetch_cloud_folder_children(provider, token, cloud_id, account_id, account_name, depth=0, max_depth=12)
 
     conn = None
     try:
