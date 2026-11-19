@@ -3,6 +3,31 @@
 // ========================================================================
 let lazyFilteredItems = [];
 
+function getActiveUploadFolderContext() {
+  if (!Array.isArray(currentFolderNavigation) || currentFolderNavigation.length === 0) {
+    return null;
+  }
+  let walker = globalVaultTree || [];
+  let ctx = null;
+
+  for (const seg of currentFolderNavigation) {
+    const match = walker.find((n) => n.type === "folder" && n.name === seg);
+    if (!match) break;
+    ctx = {
+      name: match.name,
+      provider: (match.provider || "").toLowerCase(),
+      cloud_id: match.cloud_id || "",
+      account_id: match.account_id || "",
+      account_name: match.account_name || "",
+      storage_id: match.storage_id || "",
+      remote_path: match.remote_path || "",
+      is_expired: Boolean(match.is_expired)
+    };
+    walker = match.children || [];
+  }
+  return ctx;
+}
+
 // ========================================================================
 // 🔍 FILTER, SORT & VIEW MODE CONTROLLERS
 // ========================================================================
@@ -115,6 +140,10 @@ function renderCurrentFolderLevel() {
   const backBtn = document.getElementById("back-folder-btn");
   if (!grid) return;
 
+  if (typeof updateUploadButtonVisibility === "function") {
+    updateUploadButtonVisibility();
+  }
+
   if (activeThumbnailRequests.length > 0) {
     activeThumbnailRequests.forEach((c) => {
       try { c.abort(); } catch (e) {}
@@ -166,7 +195,6 @@ function renderCurrentFolderLevel() {
       if (typeFilter !== "all" && !searchQuery) matchesType = false;
     }
 
-    // Account & Provider Sidebar Filter Logic
     let matchesAccount = true;
     if (currentFolderNavigation.length === 0 && window.activeProviderFilter !== "all") {
       if (window.activeAccountFilterId) {
@@ -197,13 +225,16 @@ function renderCurrentFolderLevel() {
     grid.style.justifyContent = "center";
 
     const isPrintQueue = typeFilter === "print_queue";
+    const isInsideFolder = currentFolderNavigation.length > 0;
     const emptyTitle = isPrintQueue ? "Print Queue is Empty" : "No items found in this directory";
     const emptyMsg = isPrintQueue
       ? "No files added to 'To Be Printed' queue yet. Click the printer icon on any file card to add it here."
-      : "Upload files using the button below or mount folders from your Cloud Drive Manager.";
+      : isInsideFolder
+      ? "This folder is currently empty. Use the 'Upload' button at the bottom right to upload files directly here."
+      : "Mount folders from your connected Cloud Drive or Hosting SFTP/FTP storage to view and manage files.";
 
     grid.innerHTML = `
-      <div class="vault-empty-state" style="max-width:400px;text-align:center;color:var(--text-sub);padding:16px 20px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;">
+      <div class="vault-empty-state" style="max-width:410px;text-align:center;color:var(--text-sub);padding:16px 20px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;">
         <i class="${isPrintQueue ? "ri-printer-cloud-line" : "ri-folder-open-line"}" style="font-size:46px;display:block;margin-bottom:4px;opacity:0.55;"></i>
         <div class="empty-title" style="font-size:15px;font-weight:700;color:var(--text-title);">${emptyTitle}</div>
         <div class="empty-desc" style="font-size:12.5px;line-height:1.5;color:var(--text-sub);">${emptyMsg}</div>
@@ -322,7 +353,6 @@ function renderCurrentFolderLevel() {
 window.activeProviderFilter = "all";
 window.activeAccountFilterId = null;
 
-// Primary-themed Drive Identity Badge
 function getProviderBadgeHTML(item) {
   const prov = (item.provider || "local").toLowerCase();
   const accLabel = item.account_name || (prov === "google" ? "Google Drive" : prov === "onedrive" ? "OneDrive" : "Encrypted Vault");
@@ -340,7 +370,6 @@ function getProviderBadgeHTML(item) {
   `;
 }
 
-// Filter Explorer by All Vault Files or Specific Cloud Account from Left Sidebar
 function filterVaultByAccount(provider, accountId = null, el = null) {
   window.activeProviderFilter = provider || "all";
   window.activeAccountFilterId = accountId || null;
@@ -375,27 +404,23 @@ async function handleItemClick(item, relativeFilePath, element) {
     if (item.cloud_id && (!item.children || item.children.length === 0)) {
       showToast(`Syncing folder contents...`, "info");
       try {
-        const res = await fetch("/api/cloud/import", {
+        const res = await fetch(`/api/cloud/fetch/${item.account_id}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: item.name,
-            cloud_id: item.cloud_id,
-            type: "folder",
-            account_id: item.account_id,
-            provider: item.provider,
-            account_name: item.account_name
-          })
+          body: JSON.stringify({ folder_id: item.cloud_id })
         });
         const data = await res.json();
-        if (data.success && data.imported_item?.children) {
-          item.children = data.imported_item.children;
+        if (data.authenticated && Array.isArray(data.tree)) {
+          item.children = data.tree;
         }
       } catch (e) {}
     }
     currentFolderNavigation.push(item.name);
     renderCurrentFolderLevel();
   } else {
+    if (typeof closeCloudPickerModal === "function") {
+      closeCloudPickerModal();
+    }
     showIntegratedPreview(
       relativeFilePath,
       item.file_type,
@@ -540,6 +565,7 @@ function openCustomContextMenu(e, item, relativePath, domElement) {
   const accName = item.account_name || "Local Vault";
   const inQueue = !isFolder && isItemInPrintQueue(relativePath);
   const isRestricted = sessionLoginType === "qr_restricted";
+  const canUploadHere = !isRestricted && Boolean(getActiveUploadFolderContext());
 
   menu.innerHTML = `
     <div class="ctx-header">
@@ -573,10 +599,12 @@ function openCustomContextMenu(e, item, relativePath, domElement) {
     </div>
     ${!isRestricted ? `
       <div class="ctx-divider"></div>
-      <div class="ctx-item" onclick="document.getElementById('vault-file-uploader').click(); hideCustomContextMenu();">
-        <i class="ri-upload-cloud-2-line"></i>
-        <span>Upload File Here</span>
-      </div>
+      ${canUploadHere ? `
+        <div class="ctx-item" onclick="document.getElementById('vault-file-uploader').click(); hideCustomContextMenu();">
+          <i class="ri-upload-cloud-2-line"></i>
+          <span>Upload File Here</span>
+        </div>
+      ` : ""}
       ${isFolder ? `
         <div class="ctx-item" onclick="ctxConfirmUnmountFolder()" style="color:#ef4444;">
           <i class="ri-link-unlink-m"></i>
@@ -617,6 +645,7 @@ async function ctxPrintItem() {
   hideCustomContextMenu();
   if (!contextMenuTargetItem) return;
   const { item, relativePath, domElement } = contextMenuTargetItem;
+  if (typeof closeCloudPickerModal === "function") closeCloudPickerModal();
   await showIntegratedPreview(
     relativePath,
     item.file_type,
@@ -641,7 +670,6 @@ function ctxShowDetails() {
   showToast(`Source: ${acc} (${provName}) • Path: /${relativePath}`, "info");
 }
 
-// 1. Confirmation Modal before Unmounting/Removing a Mounted Folder
 function ctxConfirmUnmountFolder() {
   hideCustomContextMenu();
   if (!contextMenuTargetItem) return;
@@ -677,7 +705,6 @@ function ctxConfirmUnmountFolder() {
   );
 }
 
-// 2. Strict Permanent Deletion Warning Modal for Files (Google Drive, OneDrive, SFTP/FTP, Local)
 function ctxConfirmDeleteFilePermanently() {
   hideCustomContextMenu();
   if (!contextMenuTargetItem) return;
@@ -739,15 +766,21 @@ function ctxConfirmDeleteFilePermanently() {
 document.addEventListener("click", hideCustomContextMenu);
 
 // ========================================================================
-// 📤 UPLOAD HANDLER WITH DUMMY FILE CARD & LIVE PROGRESS BAR
+// 📤 UPLOAD HANDLER (DIRECT TO ACTIVE MOUNTED CLOUD OR SFTP/FTP FOLDER)
 // ========================================================================
 async function handleCurrentFolderUpload(event) {
   const files = event.target.files;
   if (!files || files.length === 0) return;
 
+  const folderCtx = getActiveUploadFolderContext();
+  if (!folderCtx) {
+    showToast("Open a mounted Cloud Drive or SFTP/FTP folder first to upload files.", "error");
+    event.target.value = "";
+    return;
+  }
+
   const currentPath = currentFolderNavigation.join("/");
-  const displayFolder =
-    currentFolderNavigation.length > 0 ? currentFolderNavigation[currentFolderNavigation.length - 1] : "Root Vault";
+  const displayFolder = folderCtx.name;
   const grid = document.getElementById("main-explorer-grid");
   if (grid && grid.classList.contains("empty-state")) {
     grid.className = "file-grid";
@@ -787,21 +820,14 @@ async function handleCurrentFolderUpload(event) {
       formData.append("file", file);
       formData.append("folder_path", currentPath);
 
-      let activeStorageId = "";
-      let activeRemoteDir = "";
-      if (currentFolderNavigation.length > 0 && Array.isArray(globalVaultTree)) {
-        let walker = globalVaultTree;
-        for (const seg of currentFolderNavigation) {
-          const match = walker.find((n) => n.type === "folder" && n.name === seg);
-          if (!match) break;
-          if (match.storage_id) activeStorageId = match.storage_id;
-          if (match.remote_path) activeRemoteDir = match.remote_path;
-          walker = match.children || [];
-        }
+      if (folderCtx.storage_id) {
+        formData.append("storage_id", folderCtx.storage_id);
+        formData.append("remote_dir", folderCtx.remote_path);
       }
-      if (activeStorageId) {
-        formData.append("storage_id", activeStorageId);
-        formData.append("remote_dir", activeRemoteDir);
+      if (folderCtx.cloud_id && folderCtx.account_id) {
+        formData.append("cloud_folder_id", folderCtx.cloud_id);
+        formData.append("account_id", folderCtx.account_id);
+        formData.append("provider", folderCtx.provider);
       }
 
       const xhr = new XMLHttpRequest();
@@ -819,24 +845,24 @@ async function handleCurrentFolderUpload(event) {
 
       xhr.onload = () => {
         document.getElementById(dummyId)?.remove();
-        if (xhr.status === 200) {
-          const result = JSON.parse(xhr.responseText);
-          if (result.success && result.file_item) {
-            let targetArray = globalVaultTree;
-            for (const folderName of currentFolderNavigation) {
-              const found = targetArray.find((item) => item.type === "folder" && item.name === folderName);
-              if (found) {
-                if (!found.children) found.children = [];
-                targetArray = found.children;
-              }
+        let result = {};
+        try { result = JSON.parse(xhr.responseText); } catch (e) {}
+
+        if (xhr.status === 200 && result.success && result.file_item) {
+          let targetArray = globalVaultTree;
+          for (const folderName of currentFolderNavigation) {
+            const found = targetArray.find((item) => item.type === "folder" && item.name === folderName);
+            if (found) {
+              if (!found.children) found.children = [];
+              targetArray = found.children;
             }
-            const existingIdx = targetArray.findIndex((item) => item.name === result.file_item.name);
-            if (existingIdx !== -1) targetArray[existingIdx] = result.file_item;
-            else targetArray.push(result.file_item);
-            showToast(`${result.file_item.name} uploaded to ${displayFolder}!`, "success");
           }
+          const existingIdx = targetArray.findIndex((item) => item.name === result.file_item.name);
+          if (existingIdx !== -1) targetArray[existingIdx] = result.file_item;
+          else targetArray.push(result.file_item);
+          showToast(`${result.file_item.name} uploaded to ${displayFolder}!`, "success");
         } else {
-          showToast(`Failed to upload ${file.name}`, "error");
+          showToast(result.error || `Failed to upload ${file.name}`, "error");
         }
         resolve();
       };
