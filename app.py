@@ -1,4 +1,5 @@
 import os
+import gc
 import requests
 from flask import Flask
 from dotenv import load_dotenv
@@ -15,6 +16,12 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY', 'secure_vault_super_secret_key')
 app.config['SESSION_COOKIE_SECURE'] = False
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
+# Ensure forked LSAPI child workers never inherit stale locks or GC state
+if hasattr(os, 'register_at_fork'):
+    os.register_at_fork(
+        after_in_child=lambda: gc.collect()
+    )
 
 # Initialize & upgrade SQLite schema
 init_db()
@@ -42,5 +49,4 @@ app.register_blueprint(cloud_bp)
 app.register_blueprint(admin_bp)
 
 if __name__ == '__main__':
-    # app.run(host='0.0.0.0', port=8080, debug=True, threaded=True)
     app.run(host='0.0.0.0', port=8080, debug=True, threaded=True, ssl_context='adhoc')

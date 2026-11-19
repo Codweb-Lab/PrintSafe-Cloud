@@ -1,3 +1,4 @@
+import os
 import time
 import uuid
 import threading
@@ -8,7 +9,8 @@ from admin_db import get_admin_db_conn, init_admin_db
 from routes.admin.auth_ops import is_admin_authenticated
 
 admin_bc_bp = Blueprint('admin_broadcast', __name__)
-_scheduler_started = False
+_scheduler_started_pid = None
+_scheduler_lock = threading.Lock()
 
 
 def _ensure_broadcast_table():
@@ -93,6 +95,7 @@ def _dispatch_broadcast_now(
 
 
 def _background_broadcast_worker():
+    time.sleep(5)
     while True:
         try:
             _ensure_broadcast_table()
@@ -117,15 +120,31 @@ def _background_broadcast_worker():
                 )
         except Exception as e:
             print(f"[BROADCAST SCHEDULER LOOP ERROR]: {e}")
-        time.sleep(15)
+        time.sleep(30)
+
+
+def _ensure_worker_in_child_process():
+    """Starts the background scheduler lazily inside the forked worker PID, never during import."""
+    global _scheduler_started_pid
+    pid = os.getpid()
+    if _scheduler_started_pid == pid:
+        return
+    with _scheduler_lock:
+        if _scheduler_started_pid == pid:
+            return
+        _scheduler_started_pid = pid
+        t = threading.Thread(target=_background_broadcast_worker, daemon=True)
+        t.start()
 
 
 def start_broadcast_scheduler():
-    global _scheduler_started
-    if not _scheduler_started:
-        _scheduler_started = True
-        t = threading.Thread(target=_background_broadcast_worker, daemon=True)
-        t.start()
+    """Kept for backward compatibility with routes/admin/__init__.py; defers thread creation until post-fork request."""
+    pass
+
+
+@admin_bc_bp.before_app_request
+def _lazy_boot_broadcast_scheduler():
+    _ensure_worker_in_child_process()
 
 
 @admin_bc_bp.route('/api/admin/broadcasts', methods=['GET', 'POST'])
