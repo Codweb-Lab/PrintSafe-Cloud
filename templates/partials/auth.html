@@ -69,8 +69,10 @@
       </div>
 
       <!-- PIN-Only Flow (Clean single button; hides automatically when 2FA step triggers) -->
+      <!-- PIN Flow (Email or User ID + 4/6-Digit PIN) -->
       <div id="signin-flow-pin" style="display: none;">
-        <input type="password" id="pin-login-code-input" placeholder="Enter 4 or 6-Digit PIN..." maxlength="6" style="text-align:center; letter-spacing:4px; font-weight:700;" onkeydown="if(event.key==='Enter') submitUserLogin()">
+        <input type="text" id="pin-login-identifier-input" placeholder="Enter Email or User ID (usr_...)..." autocomplete="username" onkeydown="if(event.key==='Enter') document.getElementById('pin-login-code-input')?.focus()">
+        <input type="password" id="pin-login-code-input" placeholder="Enter 4 or 6-Digit PIN..." maxlength="6" inputmode="numeric" style="text-align:center; letter-spacing:4px; font-weight:700;" onkeydown="if(event.key==='Enter') submitUserLogin()">
         <button type="button" id="pin-step1-btn" class="primary-submit-btn" onclick="submitUserLogin()">Sign In with PIN</button>
       </div>
 
