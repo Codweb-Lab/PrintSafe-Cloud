@@ -538,9 +538,9 @@ def api_user_login():
         user_row = None
         if method == 'pin':
             if not email:
-                return jsonify({"success": False, "error": "Email or User ID is required for PIN sign-in."}), 400
+                return jsonify({"success": False, "error": "Email or User ID is required for PIN sign-in."})
             if not credential.isdigit() or len(credential) not in (4, 6):
-                return jsonify({"success": False, "error": "PIN must be 4 or 6 digits."}), 400
+                return jsonify({"success": False, "error": "PIN must be 4 or 6 digits."})
 
             cand = conn.execute(
                 "SELECT * FROM users WHERE LOWER(email) = ? OR LOWER(user_id) = ?",
@@ -548,31 +548,31 @@ def api_user_login():
             ).fetchone()
 
             if not cand or not cand['pin_hash'] or not check_password_hash(cand['pin_hash'], credential):
-                return jsonify({"success": False, "error": "Invalid Email/User ID or Security PIN!"}), 401
+                return jsonify({"success": False, "error": "Invalid Email/User ID or Security PIN!"})
             user_row = cand
         else:
             user_row = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
             if not user_row:
-                return jsonify({"success": False, "error": "Account not found."}), 404
+                return jsonify({"success": False, "error": "Account not found."})
 
             if method == 'email':
                 if not (user_row['password_hash'] and check_password_hash(user_row['password_hash'], credential)):
-                    return jsonify({"success": False, "error": "Incorrect Password!"}), 401
+                    return jsonify({"success": False, "error": "Incorrect Password!"})
             elif method == 'otp':
                 otp_row = conn.execute(
                     "SELECT otp_code, expires_at FROM email_otps WHERE email = ? AND purpose = 'login'",
                     (email,)
                 ).fetchone()
                 if not otp_row or otp_row['otp_code'] != credential or time.time() > otp_row['expires_at']:
-                    return jsonify({"success": False, "error": "Invalid or expired OTP!"}), 401
+                    return jsonify({"success": False, "error": "Invalid or expired OTP!"})
                 conn.execute("DELETE FROM email_otps WHERE email = ?", (email,))
                 conn.commit()
 
         if user_row['totp_enabled'] == 1 and user_row['totp_secret']:
             if not totp_code:
-                return jsonify({"success": False, "require_2fa": True, "message": "Enter 6-digit Authenticator App code."}), 200
+                return jsonify({"success": False, "require_2fa": True, "message": "Enter 6-digit Authenticator App code."})
             if not verify_totp_code(user_row['totp_secret'], totp_code):
-                return jsonify({"success": False, "require_2fa": True, "error": "Invalid 2FA code!"}), 401
+                return jsonify({"success": False, "require_2fa": True, "error": "Invalid 2FA code!"})
 
         session.permanent = True
         session['is_authenticated'] = True
