@@ -101,6 +101,7 @@ def manage_remote_storage():
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
             ''', (sid, owner_id, label, protocol, host, port, username, encrypt_storage_password(password), base_path, time.time()))
             conn.commit()
+            record_sync_event_db('storage_mounted', label, f"{protocol.upper()} • {host}")
             return jsonify({"success": True, "message": msg})
 
         if request.method == 'PUT':
@@ -131,10 +132,12 @@ def manage_remote_storage():
                 WHERE storage_id = ?
             ''', (owner_id, label, protocol, host, port, username, enc_secret, base_path, sid))
             conn.commit()
+            record_sync_event_db('storage_updated', label, f"{protocol.upper()} • {host}")
             return jsonify({"success": True, "message": "Hosting storage updated!", "new_label": label})
 
         if request.method == 'DELETE':
             sid = (data.get('storage_id') or '').strip()
+            deleted_label = "Hosting Storage"
             if sid == 'all':
                 conn.execute("DELETE FROM remote_storages WHERE owner_id = ? OR owner_id = 'user' OR owner_id IS NULL", (owner_id,))
                 conn.execute("DELETE FROM print_queue WHERE provider IN ('ftp', 'sftp')")
@@ -142,8 +145,10 @@ def manage_remote_storage():
                 row = conn.execute("SELECT label FROM remote_storages WHERE storage_id = ?", (sid,)).fetchone()
                 conn.execute("DELETE FROM remote_storages WHERE storage_id = ?", (sid,))
                 if row and row['label']:
+                    deleted_label = row['label']
                     conn.execute("DELETE FROM print_queue WHERE account_name = ?", (row['label'],))
             conn.commit()
+            record_sync_event_db('storage_unmounted', deleted_label, 'Hosting Storage')
             return jsonify({"success": True, "message": "Hosting storage permanently deleted!"})
 
     except sqlite3.Error as e:
@@ -184,6 +189,7 @@ def remove_mounted_asset():
             if name in dirs:
                 shutil.rmtree(os.path.join(root, name), ignore_errors=True)
 
+        record_sync_event_db('cloud_unmounted', name or cloud_id or storage_id, 'Vault')
         return jsonify({"success": True, "message": f'"{name}" unmounted from Vault!'})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -307,7 +313,7 @@ def manage_print_queue():
 @vault_bp.route('/api/upload-file', methods=['POST'])
 def upload_file_to_vault():
     """Uploads files directly into the active mounted Cloud Drive (Google/OneDrive) or SFTP/FTP folder."""
-    from routes.cloud_routes import get_valid_account_token
+    from routes.cloud_routes import get_valid_account_token, invalidate_cloud_dir_cache
     if not session.get('is_authenticated') or session.get('login_type') == 'qr_restricted':
         return jsonify({"success": False, "error": "Unauthorized Access!"}), 403
     if 'file' not in request.files:
@@ -383,6 +389,7 @@ def upload_file_to_vault():
                 uploaded_cloud_id = up_json.get("id")
                 uploaded_size = int(up_json.get("size") or len(raw_bytes))
 
+            invalidate_cloud_dir_cache(account_id)
             record_sync_event_db('file_uploaded', filename, target_folder or acc_label)
             return jsonify({
                 "success": True,
@@ -443,7 +450,7 @@ def upload_file_to_vault():
 @vault_bp.route('/fetch-vault-list', methods=['POST'])
 def fetch_vault_list():
     """Builds the unified directory tree from User Vault, Cloud Drives, and Active SFTP/FTP."""
-    from routes.cloud_routes import get_valid_account_token, _fetch_cloud_folder_children
+    from routes.cloud_routes import get_valid_account_token
     data = request.get_json(silent=True) or {}
     session_id = data.get('session_id') or session.get('session_id')
     if session_id:
@@ -458,6 +465,8 @@ def fetch_vault_list():
             session['is_authenticated'] = True
             session['session_id'] = session_id
             session['login_type'] = 'qr_restricted'
+            if 'owner_id' in qr_row.keys() and qr_row['owner_id']:
+                session['user_id'] = qr_row['owner_id']
 
     if not is_session_valid:
         return jsonify({"error": "Unauthorized Access!"}), 403

@@ -12,7 +12,8 @@ from db_setup import (
     get_db_connection,
     get_cloud_account_db,
     get_all_cloud_accounts_db,
-    get_feature_flags_map_db
+    get_feature_flags_map_db,
+    record_sync_event_db
 )
 
 cloud_bp = Blueprint('cloud', __name__)
@@ -162,6 +163,7 @@ def refresh_mounted_assets_for_account(account_id: str, provider: str, token: st
                     (account_id, account_name, cid)
                 )
         conn.commit()
+        record_sync_event_db('cloud_synced', account_name, provider.upper())
     except Exception as e:
         print(f"[AUTO-SYNC MOUNTED ASSETS WARNING] ({account_id}): {e}")
     finally:
@@ -176,7 +178,12 @@ def sync_all_mounted_cloud_assets():
         return jsonify({"error": "Unauthorized"}), 403
 
     accounts = [dict(a) for a in get_all_cloud_accounts_db() if a['is_enabled']]
-    assets = [dict(r) for r in get_db_connection().execute("SELECT * FROM imported_assets WHERE type = 'folder'").fetchall()]
+    conn_read = get_db_connection()
+    try:
+        assets = [dict(r) for r in conn_read.execute("SELECT * FROM imported_assets WHERE type = 'folder'").fetchall()]
+    finally:
+        conn_read.close()
+
     if not accounts or not assets:
         return jsonify({"success": True, "updated": 0})
 
@@ -295,6 +302,7 @@ def update_cloud_account():
             return jsonify({"success": False, "error": "Invalid action"}), 400
 
         conn.commit()
+        record_sync_event_db('cloud_account_updated', account_id, action)
         return jsonify({"success": True})
     except sqlite3.Error as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -654,7 +662,6 @@ def _fetch_cloud_folder_children(
                         'provider': 'onedrive'
                     })
 
-        # Fetch all child subfolders concurrently instead of one-by-one
         if subfolders:
             def _load_sub(node):
                 node['children'] = _fetch_cloud_folder_children(
@@ -698,7 +705,6 @@ def browse_cloud_account_root(account_id):
         if not token:
             return jsonify({"authenticated": False, "error": "Token expired. Please reconnect."}), 401
         label = acc['custom_name'] or acc['email'] or acc['account_id']
-        # max_depth=0 fetches ONLY current folder's direct children in 1 single API call (<250ms)
         tree = _fetch_cloud_folder_children(acc['provider'], token, folder_id, account_id, label, depth=0, max_depth=0)
         _CLOUD_DIR_MEM_CACHE[cache_key] = (now, [dict(i) for i in tree])
 
@@ -726,7 +732,7 @@ def browse_cloud_account_root(account_id):
 
 @cloud_bp.route('/api/cloud/import', methods=['POST'])
 def mount_cloud_asset_to_vault():
-    """Mounts a selected Google Drive or OneDrive folder/file into the user's PrintSafe Vault."""
+    """Mounts a selected Google Drive or OneDrive folder/file into PrintSafe Vault and broadcasts live sync."""
     if not session.get('is_authenticated'):
         return jsonify({"error": "Unauthorized"}), 403
 
@@ -762,6 +768,7 @@ def mount_cloud_asset_to_vault():
             (cloud_id, owner_id, name, asset_type, json.dumps(children), session.get('session_id', ''), provider, account_id, account_name)
         )
         conn.commit()
+        record_sync_event_db('cloud_mounted', name, account_name)
         return jsonify({
             "success": True,
             "imported_item": {
@@ -780,7 +787,7 @@ def mount_cloud_asset_to_vault():
 
 @cloud_bp.route('/api/cloud/unmount', methods=['POST'])
 def unmount_cloud_asset_from_vault():
-    """Unmounts an already mounted Google Drive or OneDrive folder/file from PrintSafe Vault."""
+    """Unmounts an already mounted Google Drive or OneDrive folder/file and broadcasts live sync."""
     if not session.get('is_authenticated'):
         return jsonify({"error": "Unauthorized"}), 403
 
@@ -797,6 +804,7 @@ def unmount_cloud_asset_from_vault():
         if name:
             conn.execute("DELETE FROM imported_assets WHERE name = ?", (name,))
         conn.commit()
+        record_sync_event_db('cloud_unmounted', name or cloud_id, 'Cloud Drive')
         return jsonify({"success": True, "message": f'"{name or "Item"}" unmounted from Vault!'})
     except sqlite3.Error as e:
         return jsonify({"success": False, "error": str(e)}), 500

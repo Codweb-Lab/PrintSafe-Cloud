@@ -399,7 +399,7 @@ function startBackgroundSyncAndRestrictionMonitor() {
         }
       }
     } catch (e) {}
-  }, 2500);
+  }, 1500);
 }
 
 async function handleIncomingSyncEvent(ev) {
@@ -418,6 +418,7 @@ async function handleIncomingSyncEvent(ev) {
     if (vaultResponse.ok) {
       const vData = await vaultResponse.json();
       globalVaultTree = vData.tree || [];
+      try { sessionStorage.setItem("ps_cached_vault_tree", JSON.stringify(globalVaultTree)); } catch (e) {}
       renderCurrentFolderLevel();
     }
     showToast(`📲 Instant Sync: "${ev.filename}" (${ev.folder_path})`, "success");
@@ -716,7 +717,7 @@ function renderCloudPickerListItems(listContainer, items) {
               ${
                 isMounted
                   ? `<button onclick="triggerCloudAssetUnmount('${safeName}', '${item.cloud_id}')" class="btn-acc-action danger"><i class="ri-link-unlink-m"></i> Unmount</button>`
-                  : `<button onclick="triggerCloudAssetImport('${safeName}', '${item.cloud_id}', '${item.type}')" class="btn-acc-action primary"><i class="ri-add-circle-line"></i> Mount</button>`
+                  : `<button onclick="triggerCloudAssetImport('${safeName}', '${item.cloud_id}', '${item.type}', this)" class="btn-acc-action primary"><i class="ri-add-circle-line"></i> Mount</button>`
               }
             </div>
           </div>`;
@@ -1132,10 +1133,17 @@ async function fetchCloudPickerItems(folderId = "root", forceRefresh = false) {
   }
 }
 
-async function triggerCloudAssetImport(name, cloudId, type) {
+async function triggerCloudAssetImport(name, cloudId, type, btnEl = null) {
   if (!activeBrowseAccount) return;
+  const accId = activeBrowseAccount.accountId;
   const currentFolder = cloudNavigationStack[cloudNavigationStack.length - 1]?.id || "root";
+  const cacheKey = `${accId}:${currentFolder}`;
 
+  // 1. Optimistic UI update: immediately switch button to "Unmount"
+  if (btnEl) {
+    btnEl.disabled = true;
+    btnEl.innerHTML = `<i class="ri-loader-4-line"></i> Mounting...`;
+  }
   showToast(`Mounting "${name}"... Please wait.`, "info");
 
   try {
@@ -1146,26 +1154,50 @@ async function triggerCloudAssetImport(name, cloudId, type) {
         name,
         cloud_id: cloudId,
         type: type || "file",
-        account_id: activeBrowseAccount.accountId,
+        account_id: accId,
         provider: activeBrowseAccount.provider,
         account_name: activeBrowseAccount.accountName
       })
     });
     const result = await response.json();
     if (result.success) {
+      // Update RAM cache item status immediately
+      if (Array.isArray(cloudPickerDirCache[cacheKey])) {
+        cloudPickerDirCache[cacheKey] = cloudPickerDirCache[cacheKey].map((item) =>
+          item.cloud_id === cloudId ? { ...item, is_mounted: true } : item
+        );
+        const listContainer = document.getElementById("cloud-picker-list");
+        if (listContainer) renderCloudPickerListItems(listContainer, cloudPickerDirCache[cacheKey]);
+      } else {
+        delete cloudPickerDirCache[cacheKey];
+        await fetchCloudPickerItems(currentFolder, true);
+      }
+
+      sessionStorage.removeItem("ps_cached_vault_tree");
       showToast(`"${name}" successfully mounted!`, "success");
-      await fetchCloudPickerItems(currentFolder);
       await bootAuthenticatedDashboard();
     } else {
+      if (btnEl) {
+        btnEl.disabled = false;
+        btnEl.innerHTML = `<i class="ri-add-circle-line"></i> Mount`;
+      }
       showToast(result.error || "Failed to mount folder", "error");
     }
   } catch (e) {
+    if (btnEl) {
+      btnEl.disabled = false;
+      btnEl.innerHTML = `<i class="ri-add-circle-line"></i> Mount`;
+    }
     showToast("Network error while mounting", "error");
   }
 }
 
 async function triggerCloudAssetUnmount(name, cloudId) {
+  if (!activeBrowseAccount) return;
+  const accId = activeBrowseAccount.accountId;
   const currentFolder = cloudNavigationStack[cloudNavigationStack.length - 1]?.id || "root";
+  const cacheKey = `${accId}:${currentFolder}`;
+
   openSessionConfirmModal(
     "Unmount Cloud Folder?",
     `Are you sure you want to unmount "${name}" from your PrintSafe Vault? (Files remain safe on your Cloud Drive).`,
@@ -1180,8 +1212,19 @@ async function triggerCloudAssetUnmount(name, cloudId) {
         });
         const result = await response.json();
         if (result.success) {
+          if (Array.isArray(cloudPickerDirCache[cacheKey])) {
+            cloudPickerDirCache[cacheKey] = cloudPickerDirCache[cacheKey].map((item) =>
+              item.cloud_id === cloudId ? { ...item, is_mounted: false } : item
+            );
+            const listContainer = document.getElementById("cloud-picker-list");
+            if (listContainer) renderCloudPickerListItems(listContainer, cloudPickerDirCache[cacheKey]);
+          } else {
+            delete cloudPickerDirCache[cacheKey];
+            await fetchCloudPickerItems(currentFolder, true);
+          }
+
+          sessionStorage.removeItem("ps_cached_vault_tree");
           showToast(result.message || `"${name}" unmounted!`, "info");
-          await fetchCloudPickerItems(currentFolder);
           await bootAuthenticatedDashboard();
         }
       } catch (e) {
