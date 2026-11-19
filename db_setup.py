@@ -7,16 +7,19 @@ from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash
 
 load_dotenv()
-DB_PATH = os.getenv('DATABASE_PATH', 'secure_vault.db')
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_raw_db = os.getenv('DATABASE_PATH', 'secure_vault.db')
+DB_PATH = _raw_db if os.path.isabs(_raw_db) else os.path.join(BASE_DIR, _raw_db)
 DEFAULT_SECRET = os.getenv('SECRET_PRINT_PASSWORD', 'admin123')
 
 
 def get_db_connection():
-    """Creates and returns a SQLite connection with Row factory and busy timeout."""
-    conn = sqlite3.connect(DB_PATH, timeout=10, check_same_thread=False)
+    """Creates and returns a SQLite connection with Row factory and 30s busy timeout."""
+    conn = sqlite3.connect(DB_PATH, timeout=30.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute("PRAGMA synchronous=NORMAL;")
+    conn.execute("PRAGMA busy_timeout=30000;")
     return conn
 
 
@@ -377,6 +380,7 @@ def toggle_feature_flag_db(feature_key, is_enabled):
     finally:
         if conn:
             conn.close()
+
 
 # ========================================================================
 # 🔐 MASTER PASSWORD & CONFIG HELPERS
