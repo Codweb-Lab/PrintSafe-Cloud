@@ -9,17 +9,27 @@ function getActiveUploadFolderContext() {
   }
   let walker = globalVaultTree || [];
   let ctx = null;
+  let inheritedProvider = "";
+  let inheritedAccountId = "";
+  let inheritedAccountName = "";
+  let inheritedStorageId = "";
 
   for (const seg of currentFolderNavigation) {
     const match = walker.find((n) => n.type === "folder" && n.name === seg);
     if (!match) break;
+
+    if (match.provider) inheritedProvider = String(match.provider).toLowerCase();
+    if (match.account_id) inheritedAccountId = match.account_id;
+    if (match.account_name) inheritedAccountName = match.account_name;
+    if (match.storage_id) inheritedStorageId = match.storage_id;
+
     ctx = {
       name: match.name,
-      provider: (match.provider || "").toLowerCase(),
+      provider: (match.provider || inheritedProvider || "google").toLowerCase(),
       cloud_id: match.cloud_id || "",
-      account_id: match.account_id || "",
-      account_name: match.account_name || "",
-      storage_id: match.storage_id || "",
+      account_id: match.account_id || inheritedAccountId || "",
+      account_name: match.account_name || inheritedAccountName || "",
+      storage_id: match.storage_id || inheritedStorageId || "",
       remote_path: match.remote_path || "",
       is_expired: Boolean(match.is_expired)
     };
@@ -27,6 +37,84 @@ function getActiveUploadFolderContext() {
   }
   return ctx;
 }
+
+// ========================================================================
+// 📤 FLOATING UPLOAD ACTION MENU (FIXED-POSITION + EVENT DELEGATION)
+// ========================================================================
+function toggleFloatingUploadMenu(e) {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  const fab = document.getElementById("floating-upload-fab");
+  let menu = document.getElementById("floating-upload-menu");
+  if (!fab || !menu) return;
+
+  // Move menu to document.body once so parent overflow/transform never clips it
+  if (menu.parentElement !== document.body) {
+    document.body.appendChild(menu);
+  }
+
+  const isOpen = menu.classList.contains("open");
+  if (isOpen) {
+    closeFloatingUploadMenu();
+    return;
+  }
+
+  const rect = fab.getBoundingClientRect();
+  menu.style.position = "fixed";
+  menu.style.right = `${Math.max(16, window.innerWidth - rect.right)}px`;
+  menu.style.bottom = `${window.innerHeight - rect.top + 10}px`;
+  menu.style.left = "auto";
+  menu.style.top = "auto";
+  menu.style.zIndex = "100040";
+  menu.classList.add("open");
+  menu.style.display = "flex";
+}
+
+function closeFloatingUploadMenu() {
+  const menu = document.getElementById("floating-upload-menu");
+  if (menu) {
+    menu.classList.remove("open");
+    menu.style.display = "none";
+  }
+}
+
+function triggerNormalUploadFromFab() {
+  closeFloatingUploadMenu();
+  const uploader = document.getElementById("vault-file-uploader");
+  if (uploader) uploader.click();
+}
+
+function triggerDocScannerFromFab() {
+  closeFloatingUploadMenu();
+  const folderCtx = typeof getActiveUploadFolderContext === "function" ? getActiveUploadFolderContext() : null;
+  if (window.PrintSafeScanner && typeof window.PrintSafeScanner.open === "function") {
+    window.PrintSafeScanner.open(folderCtx);
+  } else {
+    alert("Scanner script not loaded yet. Please press Ctrl+Shift+R to hard refresh.");
+  }
+}
+
+// Capture click even if cloud_admin.js overwrites onclick on #floating-upload-fab
+document.addEventListener(
+  "click",
+  (e) => {
+    const fab = e.target.closest("#floating-upload-fab");
+    if (fab) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      toggleFloatingUploadMenu(e);
+      return;
+    }
+
+    const menu = document.getElementById("floating-upload-menu");
+    if (menu && menu.classList.contains("open") && !menu.contains(e.target)) {
+      closeFloatingUploadMenu();
+    }
+  },
+  true
+);
 
 // ========================================================================
 // 🔍 FILTER, SORT & VIEW MODE CONTROLLERS
@@ -140,6 +228,8 @@ function renderCurrentFolderLevel() {
   const backBtn = document.getElementById("back-folder-btn");
   if (!grid) return;
 
+  closeFloatingUploadMenu();
+
   if (typeof updateUploadButtonVisibility === "function") {
     updateUploadButtonVisibility();
   }
@@ -230,7 +320,7 @@ function renderCurrentFolderLevel() {
     const emptyMsg = isPrintQueue
       ? "No files added to 'To Be Printed' queue yet. Click the printer icon on any file card to add it here."
       : isInsideFolder
-      ? "This folder is currently empty. Use the 'Upload' button at the bottom right to upload files directly here."
+      ? "This folder is currently empty. Use the 'Upload Here' button at the bottom right to upload or scan documents directly here."
       : "Mount folders from your connected Cloud Drive or Hosting SFTP/FTP storage to view and manage files.";
 
     grid.innerHTML = `
@@ -603,6 +693,10 @@ function openCustomContextMenu(e, item, relativePath, domElement) {
         <div class="ctx-item" onclick="document.getElementById('vault-file-uploader').click(); hideCustomContextMenu();">
           <i class="ri-upload-cloud-2-line"></i>
           <span>Upload File Here</span>
+        </div>
+        <div class="ctx-item" onclick="hideCustomContextMenu(); triggerDocScannerFromFab();">
+          <i class="ri-scan-2-line"></i>
+          <span>Scan Document Here</span>
         </div>
       ` : ""}
       ${isFolder ? `

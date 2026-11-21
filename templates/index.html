@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet" />
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/vault_core.css') }}?v=1.0" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/vault_core.css') }}?v=1.3" />
     <style>
       /* Standalone Right-Side Cloud Drive Explorer Drawer (Topbar to Footer Full Height) */
       #cloud-picker-drawer {
@@ -37,6 +37,71 @@
           bottom: 38px;
           z-index: 9600;
         }
+      }
+
+      /* Floating Upload Choice Menu (Normal Upload vs Scan Document) */
+      #floating-upload-menu {
+        display: none;
+        position: absolute;
+        bottom: calc(100% + 10px);
+        right: 0;
+        min-width: 215px;
+        background: var(--surface-card);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 6px;
+        box-shadow: 0 16px 36px rgba(15, 23, 42, 0.24);
+        z-index: 9800;
+        flex-direction: column;
+        gap: 4px;
+        animation: fabMenuPop 0.16s ease-out;
+      }
+      #floating-upload-menu.open {
+        display: flex;
+      }
+      @keyframes fabMenuPop {
+        from { opacity: 0; transform: translateY(8px) scale(0.97); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+      }
+      .fab-menu-option {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding: 10px 12px;
+        border: none;
+        border-radius: 10px;
+        background: transparent;
+        color: var(--text-title);
+        font-family: inherit;
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+        text-align: left;
+        transition: background 0.15s ease;
+      }
+      .fab-menu-option:hover {
+        background: var(--accent-soft);
+        color: var(--accent);
+      }
+      .fab-menu-option .opt-icon {
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        flex-shrink: 0;
+      }
+      .fab-menu-option .opt-sub {
+        display: block;
+        font-size: 10.5px;
+        font-weight: 500;
+        color: var(--text-sub);
+        margin-top: 1px;
       }
     </style>
   </head>
@@ -82,7 +147,7 @@
                 <span id="current-folder-path-display" class="current-path-text">Root Vault</span>
               </div>
 
-              <!-- 🔤 MODERN CUSTOM SORT DROPDOWN -->
+              <!-- MODERN CUSTOM SORT DROPDOWN -->
               <div class="filters-toolbar-compact">
                 <div class="modern-dropdown" id="dropdown-sort-by">
                   <input type="hidden" id="drive-sort-by" value="name-asc" />
@@ -145,10 +210,31 @@
               <i class="ri-qr-scan-2-line"></i>
             </button>
 
-            <button id="floating-upload-fab" class="fab-action-btn upload" style="display: none;" onclick="document.getElementById('vault-file-uploader').click()" title="Upload Files to Current Folder">
-              <i class="ri-upload-cloud-2-fill" style="font-size:19px;"></i>
-              <span class="fab-label" id="floating-upload-label">Upload Here</span>
-            </button>
+            <!-- Upload Action Wrapper with Normal Upload + Scan Document Options -->
+            <div style="position: relative; display: inline-flex;">
+              <div id="floating-upload-menu">
+                <button type="button" class="fab-menu-option" onclick="triggerNormalUploadFromFab()">
+                  <span class="opt-icon"><i class="ri-file-upload-line"></i></span>
+                  <span>
+                    Normal Upload
+                    <span class="opt-sub">PDF, Images, Notebooks</span>
+                  </span>
+                </button>
+                <button type="button" class="fab-menu-option" onclick="triggerDocScannerFromFab()">
+                  <span class="opt-icon"><i class="ri-scan-2-line"></i></span>
+                  <span>
+                    Scan Document
+                    <span class="opt-sub">Camera / Crop to Cloud PDF</span>
+                  </span>
+                </button>
+              </div>
+
+              <button id="floating-upload-fab" class="fab-action-btn upload" style="display: none;" onclick="toggleFloatingUploadMenu(event)" title="Upload or Scan to Current Folder">
+                <i class="ri-upload-cloud-2-fill" style="font-size:19px;"></i>
+                <span class="fab-label" id="floating-upload-label">Upload Here</span>
+                <i class="ri-arrow-up-s-line" style="font-size:15px; opacity:0.85;"></i>
+              </button>
+            </div>
           </div>
         </div>
       </main>
@@ -183,12 +269,17 @@
     <!-- 5. Global Footer -->
     {% include 'partials/footer.html' %}
 
+    
+
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="{{ url_for('static', filename='js/pdf.min.js') }}"></script>
     <script src="{{ url_for('static', filename='js/state.js') }}?v=1.0"></script>
     <script src="{{ url_for('static', filename='js/auth.js') }}?v=2.3"></script>
-    <script src="{{ url_for('static', filename='js/explorer.js') }}?v=2.0"></script>
+    <script src="{{ url_for('static', filename='js/explorer.js') }}?v=2.2"></script>
     <script src="{{ url_for('static', filename='js/preview.js') }}?v=1.0"></script>
     <script src="{{ url_for('static', filename='js/cloud_admin.js') }}?v=2.8"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="{{ url_for('static', filename='js/doc_scanner.js') }}?v=1.5"></script>
   </body>
 </html>

@@ -30,24 +30,26 @@ function setSidebarCloudLoadingState(isLoading) {
   });
 }
 
+// Ensures Upload/Scan FAB appears inside ALL mounted folders (Google Drive, OneDrive, SFTP/FTP)
 function updateUploadButtonVisibility() {
-  const uploadFab = document.getElementById("floating-upload-fab");
-  const uploadLabel = document.getElementById("floating-upload-label");
-  if (!uploadFab) return;
+  const fab = document.getElementById("floating-upload-fab");
+  const label = document.getElementById("floating-upload-label");
+  if (!fab) return;
 
-  const isRestricted = sessionLoginType === "qr_restricted" || activeRestrictions.is_restricted;
-  const folderCtx = typeof getActiveUploadFolderContext === "function" ? getActiveUploadFolderContext() : null;
+  const isRestricted = typeof sessionLoginType !== "undefined" && sessionLoginType === "qr_restricted";
+  const folderCtx = getActiveUploadFolderContext();
 
-  // Show upload button ONLY when user is inside an active mounted Cloud or SFTP/FTP folder (never on Root Vault)
-  const canUpload = !isRestricted && Boolean(folderCtx) && !folderCtx.is_expired && (
-    Boolean(folderCtx.storage_id) || (Boolean(folderCtx.cloud_id) && Boolean(folderCtx.account_id))
-  );
-
-  uploadFab.style.display = canUpload ? "flex" : "none";
-  if (canUpload && uploadLabel) {
-    uploadLabel.innerText = `Upload to ${folderCtx.name}`;
+  if (!isRestricted && folderCtx && !folderCtx.is_expired) {
+    fab.style.display = "inline-flex";
+    if (label) {
+      label.textContent = `Upload to ${folderCtx.name}`;
+    }
+  } else {
+    fab.style.display = "none";
+    if (typeof closeFloatingUploadMenu === "function") closeFloatingUploadMenu();
   }
 }
+window.updateUploadButtonVisibility = updateUploadButtonVisibility;
 
 function getCloudAccountDisplayLabel(acc) {
   const custom = (acc.custom_name || "").trim();

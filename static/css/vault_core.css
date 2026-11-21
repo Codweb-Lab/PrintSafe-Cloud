@@ -210,7 +210,7 @@ body, html {
 }
 
 /* ========================================================================
-   🔐 5. AUTH / LOGIN SCREEN (IDENTICAL TO IMAGE 1)
+   🔐 5. AUTH / LOGIN SCREEN
    ======================================================================== */
 .auth-container {
   position: fixed; top: 0; left: 0; right: 0; bottom: 40px;
@@ -505,21 +505,185 @@ body, html {
 .switch-toggle input:checked + .slider { background-color: #22c55e; }
 .switch-toggle input:checked + .slider:before { transform: translateX(15px); }
 
+/* ========================================================================
+   🚀 FLOATING ACTION CLUSTER & UPLOAD/SCAN CHOICE MENU
+   ======================================================================== */
 .floating-fab-cluster { position: fixed; right: 22px; bottom: 56px; z-index: 900; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
 .fab-action-btn {
   height: 48px; border-radius: var(--radius-card); border: none;
-  color: white; font-weight: 700; font-size: 13.5px;
-  display: flex; align-items: center; justify-content: center; gap: 8px;
+  color: white; font-weight: 700; font-size: 13.5px; font-family: inherit;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   cursor: pointer; box-shadow: 0 8px 22px rgba(0, 0, 0, 0.25);
-  transition: transform 0.2s ease; padding: 0 18px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease; padding: 0 18px;
 }
-.fab-action-btn:hover { transform: translateY(-2px); }
+.fab-action-btn:hover { transform: translateY(-2px); box-shadow: 0 12px 26px rgba(0, 0, 0, 0.32); }
 .fab-action-btn.upload { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
 .fab-action-btn.qr { background: var(--accent-gradient); width: 48px; padding: 0; font-size: 20px; display: none; }
 .fab-action-btn.disc { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); display: none; }
 
+#floating-upload-menu {
+  display: none;
+  position: fixed;
+  min-width: 228px;
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 6px;
+  box-shadow: var(--dropdown-shadow);
+  backdrop-filter: var(--glass-blur);
+  z-index: 100040;
+  flex-direction: column;
+  gap: 4px;
+  animation: fabMenuPop 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+#floating-upload-menu.open {
+  display: flex !important;
+}
+@keyframes fabMenuPop {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.fab-menu-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: var(--radius-btn);
+  background: transparent;
+  color: var(--text-title);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.fab-menu-option:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.fab-menu-option .opt-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: calc(var(--radius-btn) - 2px);
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  flex-shrink: 0;
+}
+.fab-menu-option .opt-sub {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--text-sub);
+  margin-top: 1px;
+}
+
 /* ========================================================================
-   🦶 7. GLOBAL FOOTER (SINGLE-ROW ALIGNED)
+   📸 8. ADOBE SCAN-STYLE CLIENT DOCUMENT SCANNER WORKSPACE
+   ======================================================================== */
+#ps-scanner-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100060;
+  background: rgba(9, 13, 22, 0.78);
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+}
+#ps-scanner-modal.open,
+#ps-scanner-modal.active {
+  display: flex !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+.ps-tool-btn {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: calc(var(--radius-btn) - 2px);
+  padding: 6px 11px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.15s ease;
+}
+.ps-tool-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+.ps-tool-btn.active {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: transparent;
+}
+.ps-filter-chip {
+  padding: 8px 9px;
+  border-radius: calc(var(--radius-btn) - 2px);
+  border: 1px solid var(--border);
+  background: var(--bg-app);
+  color: var(--text-title);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+.ps-filter-chip:hover {
+  border-color: var(--accent);
+}
+.ps-filter-chip.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.ps-thumb-item {
+  position: relative;
+  border: 2px solid var(--border);
+  border-radius: calc(var(--radius-btn) - 2px);
+  padding: 4px;
+  background: var(--surface-card);
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.ps-thumb-item:hover {
+  border-color: var(--accent);
+}
+.ps-thumb-item.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+@media (max-width: 780px) {
+  .ps-scanner-grid {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 92px 1fr auto !important;
+  }
+  #ps-scan-thumbs {
+    flex-direction: row !important;
+    overflow-x: auto !important;
+  }
+  .ps-thumb-item {
+    min-width: 72px;
+  }
+  .ps-thumb-item img {
+    height: 54px !important;
+  }
+}
+
+/* ========================================================================
+   🦶 9. GLOBAL FOOTER (SINGLE-ROW ALIGNED)
    ======================================================================== */
 .printsafe-footer {
   position: fixed; bottom: 0; left: 0; right: 0; height: 40px;
@@ -546,7 +710,8 @@ body, html {
   .file-list-header { display: none; }
   .file-list-row { flex-wrap: wrap; gap: 6px; }
   .fab-action-btn span.fab-label { display: none; }
-  .fab-action-btn.upload, .fab-action-btn.disc { width: 48px; padding: 0; font-size: 20px; }
+  .fab-action-btn.disc { width: 48px; padding: 0; font-size: 20px; }
+  .fab-action-btn.upload { width: auto; min-width: 54px; padding: 0 12px; font-size: 18px; }
   .printsafe-footer { height: auto; padding: 6px 12px !important; }
   .printsafe-footer .footer-content { flex-direction: column !important; text-align: center !important; gap: 2px !important; }
   .bento-top-header { padding: 0 10px !important; gap: 6px !important; }
@@ -569,4 +734,847 @@ body, html {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   background: rgba(9, 13, 22, 0.72) !important;
+}
+
+/* ========================================================================
+   📸 8. ADOBE SCAN-STYLE CONTINUOUS CAMERA & REVIEW SUITE
+   ======================================================================== */
+.ps-scanner-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100060;
+  background: rgba(9, 13, 22, 0.85);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+}
+.ps-scanner-overlay.open {
+  display: flex !important;
+}
+.ps-scanner-shell {
+  width: 520px;
+  max-width: 100%;
+  height: 90vh;
+  max-height: 850px;
+  background: var(--surface-card);
+  color: var(--text-title);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--dropdown-shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Camera Stage (Images 3, 4, 5) */
+.ps-camera-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+  background: #050811;
+}
+.ps-cam-top-overlay {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.ps-cam-top-overlay > * {
+  pointer-events: auto;
+}
+.ps-cam-circle-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(15, 23, 42, 0.68);
+  color: #ffffff;
+  font-size: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.ps-cam-dest-badge {
+  background: rgba(15, 23, 42, 0.72);
+  color: #f8fafc;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 5px 12px;
+  border-radius: 99px;
+  font-size: 11.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 210px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ps-video-viewport {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+#ps-live-video,
+#ps-live-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+#ps-live-overlay {
+  pointer-events: none;
+}
+.ps-steady-pill {
+  position: relative;
+  z-index: 6;
+  background: rgba(15, 23, 42, 0.82);
+  color: #f8fafc;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  padding: 10px 20px;
+  border-radius: 14px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.ps-capture-flash {
+  position: absolute;
+  inset: 0;
+  background: #ffffff;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 8;
+  transition: opacity 0.16s ease;
+}
+.ps-capture-flash.flash {
+  opacity: 0.65;
+}
+.ps-book-split-guide {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ps-book-dashed-line {
+  width: 2px;
+  height: 100%;
+  border-left: 3px dashed #a855f7;
+}
+.ps-book-num {
+  position: absolute;
+  font-size: 46px;
+  font-weight: 800;
+  color: rgba(168, 85, 247, 0.72);
+}
+.ps-book-num.left { left: 23%; }
+.ps-book-num.right { right: 23%; }
+.ps-book-order-pill {
+  position: absolute;
+  bottom: 12px;
+  pointer-events: auto;
+  background: rgba(15, 23, 42, 0.85);
+  color: #fff;
+  padding: 4px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.ps-camera-fallback {
+  position: relative;
+  z-index: 7;
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 22px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Mode Tabs & Shutter Deck (Images 4 & 5) */
+.ps-mode-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 10px 8px 4px 8px;
+  background: var(--surface-card);
+  border-top: 1px solid var(--border);
+  overflow-x: auto;
+}
+.ps-mode-tab {
+  background: transparent;
+  border: none;
+  color: var(--text-sub);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ps-mode-tab.active {
+  color: var(--accent);
+}
+.ps-shutter-deck {
+  padding: 10px 18px 16px 18px;
+  background: var(--surface-card);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.ps-deck-action {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-btn);
+  border: 1px solid var(--border);
+  background: var(--bg-app);
+  color: var(--text-title);
+  font-size: 19px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.ps-deck-action.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.ps-shutter-ring {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 4px solid var(--accent);
+  background: transparent;
+  padding: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ps-shutter-core {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: var(--accent-gradient);
+  display: block;
+}
+.ps-thumb-stack-btn {
+  width: 46px;
+  height: 54px;
+  border-radius: var(--radius-btn);
+  border: 2px solid var(--accent);
+  background: var(--bg-app);
+  position: relative;
+  overflow: hidden;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ps-thumb-stack-btn img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.ps-page-badge {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Review & Edit Stage (Images 1, 2, 6) */
+.ps-review-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg-app);
+}
+.ps-rev-topbar {
+  height: 54px;
+  padding: 0 12px;
+  background: var(--surface-card);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.ps-top-icon-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-btn);
+  border: 1px solid var(--border);
+  background: var(--bg-app);
+  color: var(--text-title);
+  font-size: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.ps-rev-title-box {
+  flex: 1;
+  max-width: 240px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px dashed var(--text-sub);
+  padding-bottom: 2px;
+}
+.ps-rev-title-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-title);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  text-align: center;
+  outline: none;
+}
+.ps-rev-canvas-stage {
+  flex: 1;
+  min-height: 0;
+  background: #22262e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  overflow: hidden;
+}
+#ps-scan-canvas {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+  touch-action: none;
+}
+.ps-page-nav-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 14px;
+  background: #22262e;
+}
+.ps-nav-arrow-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(15, 23, 42, 0.75);
+  color: #f8fafc;
+  font-size: 17px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.ps-page-indicator-pill {
+  background: rgba(15, 23, 42, 0.85);
+  color: #f8fafc;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 4px 14px;
+  border-radius: 99px;
+}
+
+/* Dynamic Sub-Panels (Crop / Filters / Adjust / Cleanup) */
+.ps-tool-subpanel {
+  background: var(--surface-card);
+  border-top: 1px solid var(--border);
+  padding: 8px 12px;
+}
+.ps-sub-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ps-sub-chip {
+  padding: 6px 11px;
+  border-radius: var(--radius-btn);
+  border: 1px solid var(--border);
+  background: var(--bg-app);
+  color: var(--text-title);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.ps-sub-chip.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.ps-sub-chip.primary {
+  background: var(--accent-gradient);
+  color: #ffffff;
+  border-color: transparent;
+}
+.ps-adjust-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ps-adj-tabs {
+  display: flex;
+  justify-content: space-around;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+}
+.ps-adj-tab {
+  background: none;
+  border: none;
+  color: var(--text-sub);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+.ps-adj-tab.active {
+  color: var(--accent);
+}
+.ps-adj-slider-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-sub);
+}
+.ps-adj-slider {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.ps-apply-all-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-title);
+  cursor: pointer;
+}
+
+/* Horizontal Thumbnails Strip (Image 6) */
+.ps-rev-thumbs-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-app);
+  border-top: 1px solid var(--border);
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+.ps-rev-thumb-card {
+  width: 48px;
+  height: 62px;
+  border-radius: 6px;
+  border: 2px solid var(--border);
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.ps-rev-thumb-card.active {
+  border-color: var(--accent);
+}
+.ps-rev-thumb-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.ps-rev-thumb-num {
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font-size: 9.5px;
+  font-weight: 800;
+  padding: 0 5px;
+  border-radius: 4px;
+}
+
+/* Bottom Tool Strip (Images 1, 2, 6) */
+.ps-rev-tools-dock {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 8px 10px;
+  background: var(--surface-card);
+  border-top: 1px solid var(--border);
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+.ps-rev-tool-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 52px;
+  padding: 6px 6px;
+  border-radius: var(--radius-btn);
+  border: none;
+  background: transparent;
+  color: var(--text-sub);
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.ps-rev-tool-btn i {
+  font-size: 17px;
+}
+.ps-rev-tool-btn.active {
+  background: var(--accent-gradient);
+  color: #ffffff;
+}
+.ps-rev-tool-btn.danger {
+  color: #ef4444;
+}
+
+/* Save Footer: Keep scanning + Save Images + Save PDF */
+.ps-rev-save-footer {
+  padding: 10px 14px 14px 14px;
+  background: var(--surface-card);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.ps-keep-scanning-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-title);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+  padding: 6px 4px;
+}
+.ps-save-btns-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ps-save-img-btn {
+  padding: 9px 12px;
+  border-radius: 99px;
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.ps-save-pdf-btn {
+  padding: 9px 15px;
+  border-radius: 99px;
+  border: none;
+  background: var(--accent-gradient);
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .ps-scanner-overlay {
+    padding: 0;
+  }
+  .ps-scanner-shell {
+    width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+    border: none;
+  }
+}
+/* Visual Filter Preview Cards (Exact match to Image 1) */
+.ps-filters-visual-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ps-filter-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.ps-filter-visual-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+.ps-fvc-thumb {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  border-radius: 6px;
+  border: 2px solid var(--border);
+  overflow: hidden;
+  background: var(--bg-app);
+  transition: border-color 0.15s ease;
+}
+.ps-filter-visual-card.active .ps-fvc-thumb {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.ps-fvc-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.ps-fvc-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-sub);
+  text-align: center;
+  white-space: nowrap;
+}
+.ps-filter-visual-card.active .ps-fvc-label {
+  color: var(--accent);
+}
+.ps-page-indicator-pill {
+  background: rgba(15, 23, 42, 0.88);
+  color: #f8fafc;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 5px 14px;
+  border-radius: 99px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.ps-color-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  cursor: pointer;
+}
+.ps-color-dot.active {
+  transform: scale(1.18);
+  border-color: #ffffff;
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.ps-mini-text-input {
+  flex: 1;
+  min-width: 120px;
+  padding: 6px 10px;
+  border-radius: var(--radius-btn);
+  border: 1px solid var(--border);
+  background: var(--bg-app);
+  color: var(--text-title);
+  font-size: 12px;
+  outline: none;
+}
+/* Sub-panel header with Back & Tick (✓) buttons */
+.ps-subpanel-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.ps-subpanel-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-title);
+}
+.ps-sub-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border-radius: var(--radius-btn);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.ps-sub-nav-btn.back {
+  background: var(--bg-app);
+  border: 1px solid var(--border);
+  color: var(--text-title);
+}
+.ps-sub-nav-btn.done {
+  background: var(--accent-gradient);
+  border: none;
+  color: #ffffff;
+  font-size: 16px;
+  padding: 5px 12px;
+}
+
+/* Horizontal 9-Filter Cards Strip (Image 1) */
+.ps-filter-cards-scroll {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.ps-filter-cards-scroll .ps-filter-visual-card {
+  flex: 0 0 68px;
+}
+
+/* Cleanup Panel (Image 2: Surrounding Color, Selected Color + Swatch + Eyedropper + Size Slider) */
+.ps-cleanup-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ps-cleanup-heading {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-title);
+}
+.ps-cleanup-radio-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-title);
+  cursor: pointer;
+}
+.ps-cleanup-radio-row input[type="radio"] {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+}
+.ps-cleanup-selected-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ps-cleanup-swatch {
+  width: 28px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.ps-cleanup-eyedropper {
+  width: 30px;
+  height: 28px;
+  border-radius: var(--radius-btn);
+  border: 1px solid var(--border);
+  background: var(--bg-app);
+  color: var(--text-title);
+  font-size: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.ps-cleanup-eyedropper.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.ps-cleanup-size-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Resize Strip with Proportional Document Icons (Image 3) */
+.ps-resize-strip {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.ps-resize-card {
+  flex: 0 0 82px;
+  padding: 8px 6px;
+  border-radius: var(--radius-btn);
+  border: 1.5px solid var(--border);
+  background: var(--bg-app);
+  color: var(--text-sub);
+  font-family: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.ps-resize-card.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.ps-resize-lbl {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.2;
 }

@@ -11,6 +11,7 @@ from werkzeug.utils import secure_filename
 from vault_crypto import encrypt_bytes, decrypt_bytes
 from remote_storage import (
     encrypt_storage_password,
+    decrypt_storage_password,
     test_remote_storage_connection,
     list_remote_directory,
     upload_remote_file_bytes,
@@ -34,6 +35,131 @@ ALLOWED_EXTENSIONS = {'pdf', 'jpg', 'jpeg', 'png', 'webp', 'ipynb'}
 def allowed_file(filename):
     """Checks whether the uploaded filename has an allowed document/image extension."""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def _resolve_cloud_upload_target(cloud_folder_id: str, account_id: str, provider: str, target_folder: str):
+    """Resolves missing account_id/provider/cloud_folder_id from imported_assets & cloud_accounts DB."""
+    conn = None
+    try:
+        conn = get_db_connection()
+        # 1. If account_id is provided, verify & infer provider
+        if account_id:
+            acc = conn.execute(
+                "SELECT account_id, provider FROM cloud_accounts WHERE account_id = ? AND is_enabled = 1",
+                (account_id,)
+            ).fetchone()
+            if acc:
+                provider = provider or (acc['provider'] or 'google').lower()
+                cloud_folder_id = cloud_folder_id or 'root'
+                return cloud_folder_id, account_id, provider
+
+        # 2. Match top-level mounted folder name from target_folder (e.g., "Documents/Subfolder" -> "Documents")
+        root_name = (target_folder.split('/')[0] if target_folder else '').strip()
+        if root_name:
+            asset = conn.execute(
+                "SELECT cloud_id, account_id, provider FROM imported_assets WHERE name = ? LIMIT 1",
+                (root_name,)
+            ).fetchone()
+            if asset:
+                acc_id = asset['account_id']
+                prov = (asset['provider'] or provider or 'google').lower()
+                if not acc_id:
+                    acc_row = conn.execute(
+                        "SELECT account_id FROM cloud_accounts WHERE provider = ? AND is_enabled = 1 LIMIT 1",
+                        (prov,)
+                    ).fetchone()
+                    acc_id = acc_row['account_id'] if acc_row else ''
+                if acc_id:
+                    return (cloud_folder_id or asset['cloud_id'] or 'root'), acc_id, prov
+
+        # 3. Fallback to first enabled cloud account (matching provider if given)
+        if provider in ('google', 'onedrive'):
+            acc_row = conn.execute(
+                "SELECT account_id, provider FROM cloud_accounts WHERE provider = ? AND is_enabled = 1 LIMIT 1",
+                (provider,)
+            ).fetchone()
+        else:
+            acc_row = conn.execute(
+                "SELECT account_id, provider FROM cloud_accounts WHERE is_enabled = 1 LIMIT 1"
+            ).fetchone()
+
+        if acc_row:
+            return (cloud_folder_id or 'root'), acc_row['account_id'], (acc_row['provider'] or 'google').lower()
+    except Exception as e:
+        print(f"[CLOUD TARGET RESOLVE WARNING]: {e}")
+    finally:
+        if conn:
+            conn.close()
+
+    return cloud_folder_id, account_id, provider
+
+def _append_item_to_imported_assets_db(account_id: str, provider: str, target_folder: str, new_item: dict):
+    """Persists newly uploaded files or created folders directly inside imported_assets.children_data in SQLite."""
+    if not new_item or not provider:
+        return
+    conn = None
+    try:
+        conn = get_db_connection()
+        if account_id:
+            rows = conn.execute(
+                "SELECT cloud_id, name, children_data FROM imported_assets WHERE type = 'folder' AND account_id = ?",
+                (account_id,)
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT cloud_id, name, children_data FROM imported_assets WHERE type = 'folder' AND provider = ?",
+                (provider,)
+            ).fetchall()
+
+        segments = [s.strip() for s in (target_folder or '').split('/') if s.strip()]
+        for row in rows:
+            root_name = row['name']
+            if segments and segments[0] != root_name:
+                continue
+
+            children = []
+            try:
+                if row['children_data']:
+                    children = json.loads(row['children_data'])
+            except Exception:
+                children = []
+
+            # Walk nested subfolders if target_folder has sub-paths (e.g., "Documents/SubFolder")
+            target_list = children
+            matched_path = True
+            for seg in segments[1:]:
+                found = next((c for c in target_list if c.get('type') == 'folder' and c.get('name') == seg), None)
+                if found is not None:
+                    if 'children' not in found or not isinstance(found['children'], list):
+                        found['children'] = []
+                    target_list = found['children']
+                else:
+                    matched_path = False
+                    break
+
+            if not matched_path:
+                continue
+
+            # Replace if same name & type already exists, else append
+            idx = next(
+                (i for i, c in enumerate(target_list) if c.get('name') == new_item.get('name') and c.get('type') == new_item.get('type')),
+                -1
+            )
+            if idx != -1:
+                target_list[idx] = new_item
+            else:
+                target_list.append(new_item)
+
+            conn.execute(
+                "UPDATE imported_assets SET children_data = ? WHERE cloud_id = ?",
+                (json.dumps(children), row['cloud_id'])
+            )
+        conn.commit()
+    except Exception as e:
+        print(f"[IMPORTED ASSETS TREE PERSIST WARNING]: {e}")
+    finally:
+        if conn:
+            conn.close()
 
 
 # ========================================================================
@@ -323,9 +449,9 @@ def upload_file_to_vault():
     target_folder = request.form.get('folder_path', '').strip('/')
     storage_id = (request.form.get('storage_id') or '').strip()
     remote_dir = (request.form.get('remote_dir') or '').strip()
-    cloud_folder_id = (request.form.get('cloud_folder_id') or '').strip()
-    account_id = (request.form.get('account_id') or '').strip()
-    provider = (request.form.get('provider') or '').strip().lower()
+    raw_cloud_folder_id = (request.form.get('cloud_folder_id') or '').strip()
+    raw_account_id = (request.form.get('account_id') or '').strip()
+    raw_provider = (request.form.get('provider') or '').strip().lower()
 
     if file.filename == '' or not allowed_file(file.filename):
         return jsonify({"success": False, "error": "Invalid file or unsupported extension!"}), 400
@@ -336,7 +462,43 @@ def upload_file_to_vault():
     ext = filename.rsplit('.', 1)[1].lower()
     file_type = "notebook" if ext == 'ipynb' else ("pdf" if ext == 'pdf' else "image")
 
-    # 1. Direct Upload to Active Cloud Drive Folder (Google Drive or OneDrive)
+    # 1. Direct Upload to Active Hosting SFTP / FTP Folder
+    if storage_id:
+        conn = None
+        try:
+            conn = get_db_connection()
+            row = conn.execute("SELECT * FROM remote_storages WHERE storage_id = ?", (storage_id,)).fetchone()
+            if not row:
+                return jsonify({"success": False, "error": "Remote storage not found"}), 404
+            row_dict = dict(row)
+            remote_file_path = upload_remote_file_bytes(
+                row_dict, remote_dir or row_dict.get('base_path') or '/', filename, raw_bytes
+            )
+            record_sync_event_db('file_uploaded', filename, target_folder or row_dict['label'])
+            return jsonify({
+                "success": True,
+                "file_item": {
+                    "name": filename,
+                    "type": "file",
+                    "file_type": file_type,
+                    "size": len(raw_bytes),
+                    "remote_path": remote_file_path,
+                    "storage_id": storage_id,
+                    "provider": row_dict["protocol"],
+                    "account_name": row_dict["label"]
+                }
+            }), 200
+        except Exception as e:
+            return jsonify({"success": False, "error": f"Remote upload failed: {e}"}), 500
+        finally:
+            if conn:
+                conn.close()
+
+    # 2. Direct Upload to Active Cloud Drive Folder (with automatic DB resolution fallback)
+    cloud_folder_id, account_id, provider = _resolve_cloud_upload_target(
+        raw_cloud_folder_id, raw_account_id, raw_provider, target_folder
+    )
+
     if cloud_folder_id and account_id and provider in ('google', 'onedrive'):
         acc = get_cloud_account_db(account_id)
         if not acc:
@@ -373,7 +535,11 @@ def upload_file_to_vault():
                 uploaded_cloud_id = up_json.get("id")
                 uploaded_size = int(up_json.get("size") or len(raw_bytes))
             else:
-                up_url = f"https://graph.microsoft.com/v1.0/me/drive/items/{cloud_folder_id}:/{filename}:/content"
+                up_url = (
+                    f"https://graph.microsoft.com/v1.0/me/drive/root:/{filename}:/content"
+                    if cloud_folder_id == "root"
+                    else f"https://graph.microsoft.com/v1.0/me/drive/items/{cloud_folder_id}:/{filename}:/content"
+                )
                 up_resp = requests.put(
                     up_url,
                     headers={
@@ -390,58 +556,167 @@ def upload_file_to_vault():
                 uploaded_size = int(up_json.get("size") or len(raw_bytes))
 
             invalidate_cloud_dir_cache(account_id)
+            file_item_payload = {
+                "name": filename,
+                "type": "file",
+                "file_type": file_type,
+                "size": uploaded_size,
+                "cloud_id": uploaded_cloud_id,
+                "account_id": account_id,
+                "provider": provider,
+                "account_name": acc_label
+            }
+            _append_item_to_imported_assets_db(account_id, provider, target_folder, file_item_payload)
+            invalidate_cloud_dir_cache(account_id)
             record_sync_event_db('file_uploaded', filename, target_folder or acc_label)
             return jsonify({
                 "success": True,
-                "file_item": {
-                    "name": filename,
-                    "type": "file",
-                    "file_type": file_type,
-                    "size": uploaded_size,
-                    "cloud_id": uploaded_cloud_id,
-                    "account_id": account_id,
-                    "provider": provider,
-                    "account_name": acc_label
-                }
+                "file_item": file_item_payload
             }), 200
         except Exception as e:
             return jsonify({"success": False, "error": f"Cloud upload error: {e}"}), 500
 
-    # 2. Direct Upload to Active Hosting SFTP / FTP Folder
+    return jsonify({
+        "success": False,
+        "error": "No connected Cloud Drive or SFTP/FTP folder found. Please connect a drive first."
+    }), 400
+
+
+@vault_bp.route('/api/create-folder', methods=['POST'])
+def create_vault_subfolder():
+    """Creates a dedicated subfolder inside active Google Drive, OneDrive, or SFTP/FTP folder."""
+    from routes.cloud_routes import get_valid_account_token, invalidate_cloud_dir_cache
+    if not session.get('is_authenticated') or session.get('login_type') == 'qr_restricted':
+        return jsonify({"success": False, "error": "Unauthorized Access!"}), 403
+
+    data = request.get_json(silent=True) or {}
+    folder_name = secure_filename((data.get('folder_name') or '').strip()) or f"Scan_{int(time.time())}"
+    target_folder = (data.get('folder_path') or '').strip('/')
+    raw_provider = (data.get('provider') or '').strip().lower()
+    raw_account_id = (data.get('account_id') or '').strip()
+    raw_cloud_folder_id = (data.get('cloud_folder_id') or '').strip()
+    storage_id = (data.get('storage_id') or '').strip()
+    remote_dir = (data.get('remote_dir') or '/').strip()
+
     if storage_id:
         conn = None
         try:
             conn = get_db_connection()
             row = conn.execute("SELECT * FROM remote_storages WHERE storage_id = ?", (storage_id,)).fetchone()
             if not row:
-                return jsonify({"success": False, "error": "Remote storage not found"}), 404
+                return jsonify({"success": False, "error": "Remote storage not found."}), 404
             row_dict = dict(row)
-            remote_file_path = upload_remote_file_bytes(row_dict, remote_dir, filename, raw_bytes)
-            record_sync_event_db('file_uploaded', filename, target_folder or row_dict['label'])
+            base = remote_dir or row_dict.get("base_path") or "/"
+            target_remote_path = f"{base.rstrip('/')}/{folder_name}"
+            if row_dict["protocol"] == "sftp":
+                import paramiko
+                t = paramiko.Transport((row_dict["host"], int(row_dict["port"])))
+                t.connect(username=row_dict["username"], password=decrypt_storage_password(row_dict["encrypted_secret"]))
+                sftp = paramiko.SFTPClient.from_transport(t)
+                try:
+                    sftp.mkdir(target_remote_path)
+                except IOError:
+                    pass
+                sftp.close()
+                t.close()
+            else:
+                import ftplib
+                ftp = ftplib.FTP()
+                ftp.connect(row_dict["host"], int(row_dict["port"]), timeout=15)
+                ftp.login(row_dict["username"], decrypt_storage_password(row_dict["encrypted_secret"]))
+                try:
+                    ftp.mkd(target_remote_path)
+                except ftplib.error_perm:
+                    pass
+                ftp.quit()
+
             return jsonify({
                 "success": True,
-                "file_item": {
-                    "name": filename,
-                    "type": "file",
-                    "file_type": file_type,
-                    "size": len(raw_bytes),
-                    "remote_path": remote_file_path,
+                "folder_item": {
+                    "name": folder_name,
+                    "type": "folder",
+                    "file_type": "folder",
                     "storage_id": storage_id,
+                    "remote_path": target_remote_path,
                     "provider": row_dict["protocol"],
-                    "account_name": row_dict["label"]
+                    "account_name": row_dict["label"],
+                    "children": []
                 }
             }), 200
         except Exception as e:
-            return jsonify({"success": False, "error": f"Remote upload failed: {e}"}), 500
+            return jsonify({"success": False, "error": str(e)}), 500
         finally:
             if conn:
                 conn.close()
 
-    # 3. Reject root-level uploads when no target mounted folder is open
-    return jsonify({
-        "success": False,
-        "error": "Open a mounted Cloud Drive or SFTP/FTP folder first before uploading files."
-    }), 400
+    cloud_folder_id, account_id, provider = _resolve_cloud_upload_target(
+        raw_cloud_folder_id, raw_account_id, raw_provider, target_folder
+    )
+
+    if account_id and provider in ('google', 'onedrive'):
+        acc = get_cloud_account_db(account_id)
+        if not acc:
+            return jsonify({"success": False, "error": "Cloud account not found."}), 404
+        token = get_valid_account_token(account_id)
+        if not token:
+            return jsonify({"success": False, "error": "Cloud session expired."}), 401
+
+        acc_label = acc['custom_name'] or acc['email'] or acc['account_id']
+        try:
+            if provider == 'google':
+                resp = requests.post(
+                    "https://www.googleapis.com/drive/v3/files?fields=id,name",
+                    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                    json={
+                        "name": folder_name,
+                        "mimeType": "application/vnd.google-apps.folder",
+                        "parents": [cloud_folder_id]
+                    },
+                    timeout=20
+                )
+                if not resp.ok:
+                    return jsonify({"success": False, "error": f"Google folder creation failed: {resp.text[:120]}"}), 502
+                new_id = resp.json().get("id")
+            else:
+                url = (
+                    "https://graph.microsoft.com/v1.0/me/drive/root/children"
+                    if cloud_folder_id == "root"
+                    else f"https://graph.microsoft.com/v1.0/me/drive/items/{cloud_folder_id}/children"
+                )
+                resp = requests.post(
+                    url,
+                    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                    json={"name": folder_name, "folder": {}, "@microsoft.graph.conflictBehavior": "rename"},
+                    timeout=20
+                )
+                if not resp.ok:
+                    return jsonify({"success": False, "error": f"OneDrive folder creation failed: {resp.text[:120]}"}), 502
+                j = resp.json()
+                new_id = j.get("id")
+                folder_name = j.get("name", folder_name)
+
+            invalidate_cloud_dir_cache(account_id)
+            folder_item_payload = {
+                "name": folder_name,
+                "type": "folder",
+                "file_type": "folder",
+                "cloud_id": new_id,
+                "account_id": account_id,
+                "provider": provider,
+                "account_name": acc_label,
+                "children": []
+            }
+            _append_item_to_imported_assets_db(account_id, provider, target_folder, folder_item_payload)
+            invalidate_cloud_dir_cache(account_id)
+            record_sync_event_db('folder_created', folder_name, target_folder or acc_label)
+            return jsonify({
+                "success": True,
+                "folder_item": folder_item_payload
+            }), 200
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)}), 500
+
+    return jsonify({"success": False, "error": "No connected Cloud Drive or SFTP/FTP storage found."}), 400
 
 
 # ========================================================================
