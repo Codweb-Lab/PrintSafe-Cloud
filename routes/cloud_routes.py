@@ -173,7 +173,7 @@ def refresh_mounted_assets_for_account(account_id: str, provider: str, token: st
 
 @cloud_bp.route('/api/cloud/sync-all', methods=['POST'])
 def sync_all_mounted_cloud_assets():
-    """Background sync endpoint: refreshes all enabled mounted cloud folders in parallel without blocking initial UI."""
+    """Polls Google Drive & OneDrive mounted folders and returns changed=True whenever external uploads/edits occur."""
     if not session.get('is_authenticated'):
         return jsonify({"error": "Unauthorized"}), 403
 
@@ -185,7 +185,7 @@ def sync_all_mounted_cloud_assets():
         conn_read.close()
 
     if not accounts or not assets:
-        return jsonify({"success": True, "updated": 0})
+        return jsonify({"success": True, "updated": 0, "changed": False})
 
     acc_lookup = {a['account_id']: a for a in accounts}
 
@@ -198,10 +198,16 @@ def sync_all_mounted_cloud_assets():
         if not tok:
             return None
         label = acc['custom_name'] or acc['email'] or acc_id
-        children = _fetch_cloud_folder_children(acc['provider'], tok, asset['cloud_id'], acc_id, label, depth=0, max_depth=8)
-        return (asset['cloud_id'], label, json.dumps(children))
+        fresh_children = _fetch_cloud_folder_children(
+            acc['provider'], tok, asset['cloud_id'], acc_id, label, depth=0, max_depth=8
+        )
+        fresh_json = json.dumps(fresh_children)
+        old_json = asset.get('children_data') or '[]'
+        has_diff = (fresh_json != old_json) or (asset.get('account_name') != label)
+        return (asset['cloud_id'], label, fresh_json, has_diff)
 
     updated_count = 0
+    any_tree_changed = False
     with ThreadPoolExecutor(max_workers=5) as pool:
         results = list(pool.map(_sync_one, assets))
 
@@ -209,18 +215,19 @@ def sync_all_mounted_cloud_assets():
     try:
         for item in results:
             if item:
-                cid, label, children_json = item
-                conn.execute(
-                    "UPDATE imported_assets SET children_data = ?, account_name = ? WHERE cloud_id = ?",
-                    (children_json, label, cid)
-                )
+                cid, label, children_json, has_diff = item
+                if has_diff:
+                    any_tree_changed = True
+                    conn.execute(
+                        "UPDATE imported_assets SET children_data = ?, account_name = ? WHERE cloud_id = ?",
+                        (children_json, label, cid)
+                    )
                 updated_count += 1
         conn.commit()
     finally:
         conn.close()
 
-    return jsonify({"success": True, "updated": updated_count})
-
+    return jsonify({"success": True, "updated": updated_count, "changed": any_tree_changed})
 
 # ========================================================================
 # ☁️ LIST, TOGGLE, RENAME & REMOVE CONNECTED CLOUD ACCOUNTS

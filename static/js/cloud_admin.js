@@ -108,6 +108,8 @@ async function bootAuthenticatedDashboard() {
     applyLiveRestrictionsUI();
     initializeMobileScannerFeatures();
     startBackgroundSyncAndRestrictionMonitor();
+    startBackgroundSyncAndRestrictionMonitor();
+    startCloudAutoRefreshLoop();
 
     // Show spinner ONLY on cold boot when no cached tree exists
     const gridEl = document.getElementById("main-explorer-grid");
@@ -403,6 +405,93 @@ function startBackgroundSyncAndRestrictionMonitor() {
     } catch (e) {}
   }, 1500);
 }
+
+// ========================================================================
+// 🔄 MANUAL REFRESH & REAL-TIME CLOUD DRIVE AUTO-SYNC ENGINE
+// ========================================================================
+let isCloudSyncInFlight = false;
+let cloudAutoRefreshTimer = null;
+
+async function syncCloudAndReloadExplorer(showFeedbackToast = false) {
+  if (isCloudSyncInFlight) return;
+  isCloudSyncInFlight = true;
+
+  const iconEl = document.getElementById("explorer-refresh-icon");
+  const btnEl = document.getElementById("explorer-refresh-btn");
+  if (iconEl) iconEl.classList.add("ps-spin-anim");
+  if (btnEl) btnEl.disabled = true;
+
+  try {
+    // 1. Trigger live Google Drive & OneDrive delta sync on backend
+    const syncRes = await fetch("/api/cloud/sync-all", { method: "POST" });
+    const syncData = syncRes.ok ? await syncRes.json() : null;
+
+    // 2. Re-fetch unified vault tree if manual refresh clicked OR external cloud change detected
+    if (showFeedbackToast || (syncData && syncData.changed)) {
+      const vaultRes = await fetch("/fetch-vault-list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: currentSessionId })
+      });
+
+      if (vaultRes.ok) {
+        const vData = await vaultRes.json();
+        if (Array.isArray(vData.tree)) {
+          globalVaultTree = vData.tree;
+          try {
+            sessionStorage.setItem("ps_cached_vault_tree", JSON.stringify(globalVaultTree));
+          } catch (e) {}
+
+          if (typeof renderCurrentFolderLevel === "function") {
+            renderCurrentFolderLevel();
+          }
+          if (typeof updateUploadButtonVisibility === "function") {
+            updateUploadButtonVisibility();
+          }
+        }
+      }
+
+      if (showFeedbackToast && typeof showToast === "function") {
+        showToast("✅ Explorer synced with Cloud Drives!", "success");
+      } else if (syncData && syncData.changed && typeof showToast === "function") {
+        showToast("☁️ Cloud changes synced automatically!", "info");
+      }
+    }
+  } catch (err) {
+    if (showFeedbackToast && typeof showToast === "function") {
+      showToast("Could not refresh cloud drives right now.", "error");
+    }
+  } finally {
+    isCloudSyncInFlight = false;
+    if (iconEl) iconEl.classList.remove("ps-spin-anim");
+    if (btnEl) btnEl.disabled = false;
+  }
+}
+
+function manualRefreshVaultExplorer() {
+  syncCloudAndReloadExplorer(true);
+}
+
+function startCloudAutoRefreshLoop() {
+  if (cloudAutoRefreshTimer) clearInterval(cloudAutoRefreshTimer);
+
+  // Poll connected Google Drive & OneDrive every 12 seconds while tab is active
+  cloudAutoRefreshTimer = setInterval(() => {
+    if (document.visibilityState === "visible") {
+      syncCloudAndReloadExplorer(false);
+    }
+  }, 12000);
+
+  // Instant sync the moment user switches back to PrintSafe tab from Google Drive / OneDrive
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      syncCloudAndReloadExplorer(false);
+    }
+  });
+}
+
+window.manualRefreshVaultExplorer = manualRefreshVaultExplorer;
+window.syncCloudAndReloadExplorer = syncCloudAndReloadExplorer;
 
 async function handleIncomingSyncEvent(ev) {
   if (lastSeenSyncEventId === null) {

@@ -1726,3 +1726,12 @@ body, html {
   height: 100%;
   pointer-events: none;
 }
+/* Explorer Refresh Button Spin Animation */
+@keyframes psSpin360 {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.ps-spin-anim {
+  display: inline-block;
+  animation: psSpin360 0.75s linear infinite;
+}
