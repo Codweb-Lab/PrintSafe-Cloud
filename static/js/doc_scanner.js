@@ -1,5 +1,5 @@
 /**
- * PrintSafe Cloud — Full Adobe Scan-Style Document Scanner Suite (v8.1)
+ * PrintSafe Cloud — Full Adobe Scan-Style Document Scanner Suite (v9.0)
  * File: static/js/doc_scanner.js
  */
 (function () {
@@ -55,11 +55,16 @@
     cleanupBrushSize: 28,
     isEyedropperActive: false,
 
+    // Camera & Auto-Capture stability state
     mediaStream: null,
+    imageCaptureObj: null,
     detectRafId: null,
     stableFrames: 0,
     lastLiveQuad: null,
     isCapturingFrame: false,
+    awaitingSceneChangeAfterCapture: false,
+    lastCapturedQuadSignature: null,
+
     draggingHandleIndex: -1,
     isDrawingStroke: false,
     targetFolderCtx: null,
@@ -265,9 +270,14 @@
                 </button>
               </div>
 
-              <div class="ps-video-viewport">
+              <div class="ps-video-viewport" id="ps-video-viewport">
                 <video id="ps-live-video" autoplay playsinline muted></video>
                 <canvas id="ps-live-overlay"></canvas>
+
+                <!-- Tap-to-Focus Reticle Ring -->
+                <div id="ps-focus-reticle" class="ps-focus-reticle" style="display:none;">
+                  <div class="ps-focus-inner"></div>
+                </div>
 
                 <div id="ps-book-split-guide" class="ps-book-split-guide" style="display:none;">
                   <span class="ps-book-num left">1</span>
@@ -277,10 +287,11 @@
                 </div>
 
                 <div id="ps-steady-pill" class="ps-steady-pill" style="display:none;">
-                  Capturing... hold steady
+                  Focusing &amp; capturing... hold steady
                 </div>
 
                 <div id="ps-capture-flash" class="ps-capture-flash"></div>
+                <div id="ps-scan-laser-beam" class="ps-scan-laser-beam"></div>
 
                 <div id="ps-camera-fallback" class="ps-camera-fallback" style="display:none;">
                   <i class="ri-camera-lens-line" style="font-size:40px; color:var(--accent); margin-bottom:8px;"></i>
@@ -314,7 +325,13 @@
                 <button type="button" class="ps-deck-action active" id="ps-auto-cap-btn" onclick="PrintSafeScanner.toggleAutoCapture()" title="Auto-Capture">
                   <i class="ri-sparkling-2-line"></i>
                 </button>
-                <button type="button" class="ps-shutter-ring" onclick="PrintSafeScanner.captureFromVideo()" title="Capture Page">
+                <button type="button" class="ps-shutter-ring" id="ps-shutter-ring" onclick="PrintSafeScanner.captureFromVideo(true)" title="Capture HD Page">
+                  <svg class="ps-shutter-svg" viewBox="0 0 72 72">
+                    <circle cx="36" cy="36" r="32" fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="4" />
+                    <circle id="ps-shutter-arc" cx="36" cy="36" r="32" fill="none" stroke="#38bdf8" stroke-width="4"
+                            stroke-dasharray="201" stroke-dashoffset="201" stroke-linecap="round"
+                            transform="rotate(-90 36 36)" />
+                  </svg>
                   <span class="ps-shutter-core"></span>
                 </button>
                 <button type="button" class="ps-deck-action" id="ps-torch-btn" onclick="PrintSafeScanner.toggleTorch()" title="Flash">
@@ -580,6 +597,8 @@
       this.redoStack = [];
       this.isThumbsOpen = false;
       this.bookOrderReversed = false;
+      this.awaitingSceneChangeAfterCapture = false;
+      this.lastCapturedQuadSignature = null;
       this.targetFolderCtx = preselectedFolderCtx || this._resolveCurrentFolderContext();
 
       const destEl = document.getElementById("ps-cam-dest-name");
@@ -622,6 +641,9 @@
 
     async switchToCamera() {
       this.viewMode = "camera";
+      this.stableFrames = 0;
+      this.awaitingSceneChangeAfterCapture = false;
+      this._updateShutterArcProgress(0);
       document.getElementById("ps-camera-stage").style.display = "flex";
       document.getElementById("ps-review-stage").style.display = "none";
       await this._startCameraStream();
@@ -774,6 +796,8 @@
     setPreset(presetName) {
       this.scanPreset = presetName;
       this.stableFrames = 0;
+      this.awaitingSceneChangeAfterCapture = false;
+      this._updateShutterArcProgress(0);
       document.querySelectorAll(".ps-mode-tab").forEach((btn) => {
         btn.classList.toggle("active", btn.getAttribute("data-mode") === presetName);
       });
@@ -790,6 +814,7 @@
     toggleAutoCapture() {
       this.autoCaptureEnabled = !this.autoCaptureEnabled;
       this.stableFrames = 0;
+      this._updateShutterArcProgress(0);
       document.getElementById("ps-auto-cap-btn")?.classList.toggle("active", this.autoCaptureEnabled);
       const pill = document.getElementById("ps-steady-pill");
       if (pill && !this.autoCaptureEnabled) pill.style.display = "none";
@@ -811,6 +836,57 @@
       } catch (e) {}
     },
 
+    // Point 4: Tap-to-Focus handler on Camera Viewport
+    async triggerCameraTapFocus(clientX, clientY) {
+      const viewport = document.getElementById("ps-video-viewport");
+      const reticle = document.getElementById("ps-focus-reticle");
+      if (!viewport || !reticle) return;
+
+      const rect = viewport.getBoundingClientRect();
+      const relX = clientX - rect.left;
+      const relY = clientY - rect.top;
+      const normX = Math.min(1, Math.max(0, relX / rect.width));
+      const normY = Math.min(1, Math.max(0, relY / rect.height));
+
+      // Show animated focus circle at tapped point
+      reticle.style.left = `${relX}px`;
+      reticle.style.top = `${relY}px`;
+      reticle.style.display = "flex";
+      reticle.classList.remove("pulse");
+      void reticle.offsetWidth;
+      reticle.classList.add("pulse");
+
+      // Pause auto-capture briefly so camera lens settles on the newly tapped focus plane
+      this.stableFrames = 0;
+      this._updateShutterArcProgress(0);
+
+      if (this.mediaStream) {
+        const track = this.mediaStream.getVideoTracks()[0];
+        if (track && track.getCapabilities && track.applyConstraints) {
+          try {
+            const caps = track.getCapabilities();
+            const adv = [];
+            if (Array.isArray(caps.focusMode) && caps.focusMode.includes("continuous")) {
+              adv.push({ focusMode: "continuous" });
+            } else if (Array.isArray(caps.focusMode) && caps.focusMode.includes("single-shot")) {
+              adv.push({ focusMode: "single-shot" });
+            }
+            if (caps.pointsOfInterest) {
+              adv.push({ pointsOfInterest: [{ x: normX, y: normY }] });
+            }
+            if (adv.length > 0) {
+              await track.applyConstraints({ advanced: adv });
+            }
+          } catch (e) {}
+        }
+      }
+
+      clearTimeout(this._focusHideTimer);
+      this._focusHideTimer = setTimeout(() => {
+        if (reticle) reticle.style.display = "none";
+      }, 1300);
+    },
+
     async _startCameraStream() {
       const video = document.getElementById("ps-live-video");
       const fallback = document.getElementById("ps-camera-fallback");
@@ -827,14 +903,31 @@
       }
 
       try {
+        // Point 3: Request Full HD (1920x1080) + continuous autofocus
         this.mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1920, min: 1280 },
+            height: { ideal: 1080, min: 720 },
+            focusMode: { ideal: "continuous" }
+          },
           audio: false
         });
         video.srcObject = this.mediaStream;
         video.setAttribute("playsinline", "true");
         video.muted = true;
         await video.play();
+
+        // Bind hardware ImageCapture for full native sensor HD photos
+        const track = this.mediaStream.getVideoTracks()[0];
+        if (track && typeof window.ImageCapture === "function") {
+          try {
+            this.imageCaptureObj = new window.ImageCapture(track);
+          } catch (e) {
+            this.imageCaptureObj = null;
+          }
+        }
+
         this._startLiveEdgeOverlayLoop();
       } catch (err) {
         try {
@@ -854,6 +947,7 @@
         cancelAnimationFrame(this.detectRafId);
         this.detectRafId = null;
       }
+      this.imageCaptureObj = null;
       if (this.mediaStream) {
         this.mediaStream.getTracks().forEach((t) => t.stop());
         this.mediaStream = null;
@@ -862,6 +956,35 @@
       if (video) video.srcObject = null;
       const pill = document.getElementById("ps-steady-pill");
       if (pill) pill.style.display = "none";
+    },
+
+    _updateShutterArcProgress(fraction) {
+      const arc = document.getElementById("ps-shutter-arc");
+      if (!arc) return;
+      const clamped = Math.min(1, Math.max(0, fraction));
+      const circumference = 201;
+      arc.style.strokeDashoffset = String(Math.round(circumference * (1 - clamped)));
+    },
+
+    // Laplacian variance sharpness check so auto-capture waits until lens is in sharp focus
+    _computeImageSharpness(ctx, w, h) {
+      const data = ctx.getImageData(0, 0, w, h).data;
+      let sum = 0;
+      let count = 0;
+      for (let y = 2; y < h - 2; y += 3) {
+        for (let x = 2; x < w - 2; x += 3) {
+          const i = (y * w + x) * 4;
+          const lC = data[i + 1];
+          const lL = data[i - 3];
+          const lR = data[i + 5];
+          const lU = data[i - w * 4 + 1];
+          const lD = data[i + w * 4 + 1];
+          const lap = Math.abs(4 * lC - lL - lR - lU - lD);
+          sum += lap;
+          count++;
+        }
+      }
+      return sum / (count || 1);
     },
 
     _startLiveEdgeOverlayLoop() {
@@ -873,6 +996,7 @@
       const sampleCanvas = document.createElement("canvas");
       const sCtx = sampleCanvas.getContext("2d", { willReadFrequently: true });
       let frameTick = 0;
+      const REQUIRED_STABLE_TICKS = 16; // ~2.6 seconds steady focus lock before auto-capture
 
       const tick = () => {
         if (this.viewMode !== "camera" || !this.mediaStream) return;
@@ -885,10 +1009,12 @@
 
           frameTick++;
           if (frameTick % 5 === 0) {
-            sampleCanvas.width = 200;
-            sampleCanvas.height = Math.max(110, Math.round((video.videoHeight / video.videoWidth) * 200));
+            sampleCanvas.width = 220;
+            sampleCanvas.height = Math.max(120, Math.round((video.videoHeight / video.videoWidth) * 220));
             sCtx.drawImage(video, 0, 0, sampleCanvas.width, sampleCanvas.height);
+
             const detected = this._autoDetectDocumentCorners(sampleCanvas, true);
+            const sharpness = this._computeImageSharpness(sCtx, sampleCanvas.width, sampleCanvas.height);
 
             if (detected) {
               const scaleX = overlay.width / sampleCanvas.width;
@@ -898,20 +1024,35 @@
                 y: Math.round(p.y * scaleY)
               }));
 
-              if (this.lastLiveQuad) {
+              const quadSig = `${Math.round(scaledQuad[0].x / 20)},${Math.round(scaledQuad[0].y / 20)},${Math.round(scaledQuad[2].x / 20)},${Math.round(scaledQuad[2].y / 20)}`;
+
+              // Unlock auto-capture only after user moves camera / swaps to next page
+              if (this.awaitingSceneChangeAfterCapture) {
+                if (this.lastCapturedQuadSignature && quadSig !== this.lastCapturedQuadSignature) {
+                  this.awaitingSceneChangeAfterCapture = false;
+                }
+              }
+
+              if (this.lastLiveQuad && !this.awaitingSceneChangeAfterCapture) {
                 const drift =
                   Math.hypot(scaledQuad[0].x - this.lastLiveQuad[0].x, scaledQuad[0].y - this.lastLiveQuad[0].y) +
                   Math.hypot(scaledQuad[2].x - this.lastLiveQuad[2].x, scaledQuad[2].y - this.lastLiveQuad[2].y);
-                if (drift < overlay.width * 0.04) {
+
+                // Require both physical steadiness AND sharp lens focus (sharpness >= 7.5)
+                if (drift < overlay.width * 0.032 && sharpness >= 7.5) {
                   this.stableFrames++;
                 } else {
-                  this.stableFrames = Math.max(0, this.stableFrames - 1);
+                  this.stableFrames = Math.max(0, this.stableFrames - 2);
                 }
+              } else {
+                this.stableFrames = 0;
               }
               this.lastLiveQuad = scaledQuad;
+              this._currentQuadSig = quadSig;
             } else {
               this.lastLiveQuad = null;
               this.stableFrames = 0;
+              this.awaitingSceneChangeAfterCapture = false;
             }
           }
 
@@ -942,20 +1083,27 @@
             });
             oCtx.restore();
 
-            if (this.autoCaptureEnabled && this.stableFrames >= 3 && !this.isCapturingFrame) {
+            if (this.autoCaptureEnabled && !this.awaitingSceneChangeAfterCapture && this.stableFrames >= 4 && !this.isCapturingFrame) {
+              const progress = (this.stableFrames - 4) / (REQUIRED_STABLE_TICKS - 4);
+              this._updateShutterArcProgress(progress);
               if (steadyPill) {
-                steadyPill.textContent = "Capturing... hold steady";
+                steadyPill.textContent = "Focusing... hold steady";
                 steadyPill.style.display = "block";
               }
-              if (this.stableFrames >= 9) {
+              if (this.stableFrames >= REQUIRED_STABLE_TICKS) {
                 this.stableFrames = 0;
-                this.captureFromVideo();
+                this._updateShutterArcProgress(0);
+                this.awaitingSceneChangeAfterCapture = true;
+                this.lastCapturedQuadSignature = this._currentQuadSig;
+                this.captureFromVideo(false);
               }
-            } else if (steadyPill) {
-              steadyPill.style.display = "none";
+            } else {
+              this._updateShutterArcProgress(0);
+              if (steadyPill) steadyPill.style.display = "none";
             }
-          } else if (steadyPill) {
-            steadyPill.style.display = "none";
+          } else {
+            this._updateShutterArcProgress(0);
+            if (steadyPill) steadyPill.style.display = "none";
           }
         }
 
@@ -965,7 +1113,8 @@
       this.detectRafId = requestAnimationFrame(tick);
     },
 
-    captureFromVideo() {
+    // Point 3: Full HD Capture (uses hardware ImageCapture.takePhoto when available, else full HD video frame)
+    async captureFromVideo(isManualShutter = false) {
       const video = document.getElementById("ps-live-video");
       if (!video || !video.videoWidth || this.isCapturingFrame) {
         if (!video || !video.videoWidth) {
@@ -976,10 +1125,27 @@
 
       this.isCapturingFrame = true;
       try {
+        let sourceBitmapOrImg = null;
+        let srcW = video.videoWidth;
+        let srcH = video.videoHeight;
+
+        // Try native full-resolution photo via ImageCapture API first
+        if (this.imageCaptureObj && typeof this.imageCaptureObj.takePhoto === "function") {
+          try {
+            const photoBlob = await this.imageCaptureObj.takePhoto();
+            const img = await this._loadImageFromFile(photoBlob);
+            sourceBitmapOrImg = img;
+            srcW = img.naturalWidth;
+            srcH = img.naturalHeight;
+          } catch (e) {
+            sourceBitmapOrImg = null;
+          }
+        }
+
         const rawCanvas = document.createElement("canvas");
-        const maxDim = 1800;
-        let w = video.videoWidth;
-        let h = video.videoHeight;
+        const maxDim = 2560; // Full HD+ crisp resolution
+        let w = srcW;
+        let h = srcH;
         if (Math.max(w, h) > maxDim) {
           const s = maxDim / Math.max(w, h);
           w = Math.round(w * s);
@@ -987,7 +1153,7 @@
         }
         rawCanvas.width = w;
         rawCanvas.height = h;
-        rawCanvas.getContext("2d").drawImage(video, 0, 0, w, h);
+        rawCanvas.getContext("2d").drawImage(sourceBitmapOrImg || video, 0, 0, w, h);
 
         if (this.scanPreset === "Book") {
           const halfW = Math.round(w / 2);
@@ -1012,19 +1178,88 @@
           this._addCanvasPage(rawCanvas);
         }
 
+        if (isManualShutter) {
+          this.awaitingSceneChangeAfterCapture = true;
+          this.lastCapturedQuadSignature = this._currentQuadSig;
+        }
+
+        // Freeze captured image on viewport & run visible Top->Bottom->Top laser scan animation
+        const overlay = document.getElementById("ps-live-overlay");
+        if (overlay) {
+          overlay.width = rawCanvas.width;
+          overlay.height = rawCanvas.height;
+          overlay.getContext("2d").drawImage(rawCanvas, 0, 0);
+        }
+
+        const laserEl = document.getElementById("ps-scan-laser-beam");
+        if (laserEl) {
+          laserEl.classList.remove("scanning");
+          void laserEl.offsetWidth;
+          laserEl.classList.add("scanning");
+          setTimeout(() => laserEl.classList.remove("scanning"), 1180);
+        }
+
         const flashEl = document.getElementById("ps-capture-flash");
         if (flashEl) {
           flashEl.classList.add("flash");
           setTimeout(() => flashEl.classList.remove("flash"), 180);
         }
+
         if (typeof window.showToast === "function") {
-          window.showToast(`📸 Page ${this.pages.length} captured!`, "success");
+          window.showToast(`📸 HD Page ${this.pages.length} scanned & auto-cropped!`, "success");
         }
       } finally {
         setTimeout(() => {
           this.isCapturingFrame = false;
-        }, 850);
+        }, 1350);
       }
+    },
+
+    _warpPerspectiveFromCorners(srcCanvas, corners) {
+      const [tl, tr, br, bl] = corners;
+      const topW = Math.hypot(tr.x - tl.x, tr.y - tl.y);
+      const botW = Math.hypot(br.x - bl.x, br.y - bl.y);
+      const leftH = Math.hypot(bl.x - tl.x, bl.y - tl.y);
+      const rightH = Math.hypot(br.x - tr.x, br.y - tr.y);
+
+      const outW = Math.max(200, Math.round(Math.max(topW, botW)));
+      const outH = Math.max(200, Math.round(Math.max(leftH, rightH)));
+
+      const srcData = srcCanvas.getContext("2d").getImageData(0, 0, srcCanvas.width, srcCanvas.height);
+      const dstCanvas = document.createElement("canvas");
+      dstCanvas.width = outW;
+      dstCanvas.height = outH;
+      const dstCtx = dstCanvas.getContext("2d");
+      const dstData = dstCtx.createImageData(outW, outH);
+
+      const sW = srcCanvas.width;
+      const sH = srcCanvas.height;
+      const sBuf = srcData.data;
+      const dBuf = dstData.data;
+
+      for (let y = 0; y < outH; y++) {
+        const v = y / (outH - 1 || 1);
+        const leftX = tl.x + (bl.x - tl.x) * v;
+        const leftY = tl.y + (bl.y - tl.y) * v;
+        const rightX = tr.x + (br.x - tr.x) * v;
+        const rightY = tr.y + (br.y - tr.y) * v;
+
+        for (let x = 0; x < outW; x++) {
+          const u = x / (outW - 1 || 1);
+          const sx = Math.min(sW - 1, Math.max(0, Math.round(leftX + (rightX - leftX) * u)));
+          const sy = Math.min(sH - 1, Math.max(0, Math.round(leftY + (rightY - leftY) * u)));
+
+          const sIdx = (sy * sW + sx) * 4;
+          const dIdx = (y * outW + x) * 4;
+          dBuf[dIdx] = sBuf[sIdx];
+          dBuf[dIdx + 1] = sBuf[sIdx + 1];
+          dBuf[dIdx + 2] = sBuf[sIdx + 2];
+          dBuf[dIdx + 3] = 255;
+        }
+      }
+
+      dstCtx.putImageData(dstData, 0, 0);
+      return dstCanvas;
     },
 
     _addCanvasPage(rawCanvas) {
@@ -1036,10 +1271,13 @@
           ? "magic"
           : "original";
 
+      // Immediately crop & straighten according to detected edges upon capture
+      const croppedCanvas = this._warpPerspectiveFromCorners(rawCanvas, detectedCorners);
+
       const pageObj = {
         id: "pg_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
         rawCanvas,
-        workingCanvas: this._cloneCanvas(rawCanvas),
+        workingCanvas: croppedCanvas,
         cleanupLayer: null,
         markupLayer: null,
         textStamps: [],
@@ -1047,7 +1285,7 @@
         filter: defaultFilter,
         brightness: 0,
         contrast: 0,
-        isCropped: false,
+        isCropped: true,
         processedCanvas: null,
         processedDataUrl: null
       };
@@ -1076,11 +1314,16 @@
       }
     },
 
+    /**
+     * Point 1: Bright White Document Region + Connected-Component Boundary Detector
+     * Specifically isolates bright/white paper sheets & white cards even when placed inside
+     * a dark laptop screen, dark desk, or cluttered background.
+     */
     _autoDetectDocumentCorners(canvas, strictMode = false) {
       const w = canvas.width;
       const h = canvas.height;
-      const gridW = strictMode ? w : 240;
-      const gridH = strictMode ? h : Math.max(135, Math.round((h / w) * gridW));
+      const gridW = 200;
+      const gridH = Math.max(110, Math.round((h / w) * gridW));
 
       const tmp = document.createElement("canvas");
       tmp.width = gridW;
@@ -1089,99 +1332,127 @@
       tctx.drawImage(canvas, 0, 0, gridW, gridH);
       const data = tctx.getImageData(0, 0, gridW, gridH).data;
 
-      let bgR = 0, bgG = 0, bgB = 0, count = 0;
-      const samplePixel = (x, y) => {
-        const idx = (y * gridW + x) * 4;
-        bgR += data[idx];
-        bgG += data[idx + 1];
-        bgB += data[idx + 2];
-        count++;
-      };
-      for (let x = 2; x < gridW - 2; x += 2) {
-        samplePixel(x, 2);
-        samplePixel(x, gridH - 3);
+      // Step 1: Compute adaptive luminance histogram to find white paper threshold
+      const totalPx = gridW * gridH;
+      const lumArr = new Uint8Array(totalPx);
+      const satArr = new Uint8Array(totalPx);
+      let lumSum = 0;
+
+      for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+        const r = data[i], g = data[i + 1], b = data[i + 2];
+        const maxC = Math.max(r, g, b);
+        const minC = Math.min(r, g, b);
+        const lum = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+        lumArr[p] = lum;
+        satArr[p] = maxC - minC;
+        lumSum += lum;
       }
-      for (let y = 2; y < gridH - 2; y += 2) {
-        samplePixel(2, y);
-        samplePixel(gridW - 3, y);
-      }
-      bgR /= count || 1;
-      bgG /= count || 1;
-      bgB /= count || 1;
-      const bgLum = 0.299 * bgR + 0.587 * bgG + 0.114 * bgB;
+      const meanLum = lumSum / totalPx;
 
-      const isDocBoundaryOrSurface = (x, y) => {
-        const idx = (y * gridW + x) * 4;
-        const r = data[idx], g = data[idx + 1], b = data[idx + 2];
-        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-        const colorDiff = Math.hypot(r - bgR, g - bgG, b - bgB);
-
-        const idxR = (y * gridW + Math.min(gridW - 1, x + 1)) * 4;
-        const idxD = (Math.min(gridH - 1, y + 1) * gridW + x) * 4;
-        const lumR = 0.299 * data[idxR] + 0.587 * data[idxR + 1] + 0.114 * data[idxR + 2];
-        const lumD = 0.299 * data[idxD] + 0.587 * data[idxD + 1] + 0.114 * data[idxD + 2];
-        const edgeGrad = Math.abs(lum - lumR) + Math.abs(lum - lumD);
-
-        return colorDiff > 38 || (bgLum < 155 && lum > bgLum + 32) || edgeGrad > 48;
-      };
-
-      let marginX = Math.round(gridW * 0.03);
-      let marginY = Math.round(gridH * 0.03);
-      if (this.scanPreset === "ID card" || this.scanPreset === "Business") {
-        marginX = Math.round(gridW * 0.12);
-        marginY = Math.round(gridH * 0.22);
+      // White paper / bright card mask: high luminance & low color saturation (neutral white/off-white)
+      const whiteThresh = Math.max(148, Math.min(215, Math.round(meanLum + 26)));
+      const mask = new Uint8Array(totalPx);
+      for (let p = 0; p < totalPx; p++) {
+        if (lumArr[p] >= whiteThresh && satArr[p] <= 58) {
+          mask[p] = 1;
+        }
       }
 
-      let tl = { x: marginX, y: marginY, score: Infinity };
-      let tr = { x: gridW - marginX, y: marginY, score: -Infinity };
-      let br = { x: gridW - marginX, y: gridH - marginY, score: -Infinity };
-      let bl = { x: marginX, y: gridH - marginY, score: Infinity };
-      let docHits = 0;
+      // Step 2: Connected-component flood fill to find the largest contiguous white document sheet
+      const visited = new Uint8Array(totalPx);
+      let bestComp = null;
+      const queue = new Int32Array(totalPx);
+
+      const marginX = Math.round(gridW * 0.04);
+      const marginY = Math.round(gridH * 0.04);
 
       for (let y = marginY; y < gridH - marginY; y++) {
         for (let x = marginX; x < gridW - marginX; x++) {
-          if (!isDocBoundaryOrSurface(x, y)) continue;
-          if (!isDocBoundaryOrSurface(Math.min(gridW - 1, x + 2), y) || !isDocBoundaryOrSurface(x, Math.min(gridH - 1, y + 2))) {
-            continue;
+          const startIdx = y * gridW + x;
+          if (!mask[startIdx] || visited[startIdx]) continue;
+
+          let head = 0, tail = 0;
+          queue[tail++] = startIdx;
+          visited[startIdx] = 1;
+
+          let area = 0;
+          let touchesOuterFrame = 0;
+          let tl = { x, y, score: x + y };
+          let tr = { x, y, score: x - y };
+          let br = { x, y, score: x + y };
+          let bl = { x, y, score: x - y };
+
+          while (head < tail) {
+            const cur = queue[head++];
+            const cy = (cur / gridW) | 0;
+            const cx = cur - cy * gridW;
+            area++;
+
+            if (cx <= 2 || cx >= gridW - 3 || cy <= 2 || cy >= gridH - 3) {
+              touchesOuterFrame++;
+            }
+
+            const sum = cx + cy;
+            const diff = cx - cy;
+            if (sum < tl.score) tl = { x: cx, y: cy, score: sum };
+            if (diff > tr.score) tr = { x: cx, y: cy, score: diff };
+            if (sum > br.score) br = { x: cx, y: cy, score: sum };
+            if (diff < bl.score) bl = { x: cx, y: cy, score: diff };
+
+            // 4-connected neighbors
+            const n1 = cur - 1;
+            const n2 = cur + 1;
+            const n3 = cur - gridW;
+            const n4 = cur + gridW;
+            if (cx > 0 && mask[n1] && !visited[n1]) { visited[n1] = 1; queue[tail++] = n1; }
+            if (cx < gridW - 1 && mask[n2] && !visited[n2]) { visited[n2] = 1; queue[tail++] = n2; }
+            if (cy > 0 && mask[n3] && !visited[n3]) { visited[n3] = 1; queue[tail++] = n3; }
+            if (cy < gridH - 1 && mask[n4] && !visited[n4]) { visited[n4] = 1; queue[tail++] = n4; }
           }
-          docHits++;
-          const sum = x + y;
-          const diff = x - y;
-          if (sum < tl.score) tl = { x, y, score: sum };
-          if (diff > tr.score) tr = { x, y, score: diff };
-          if (sum > br.score) br = { x, y, score: sum };
-          if (diff < bl.score) bl = { x, y, score: diff };
+
+          const areaRatio = area / totalPx;
+          // Ignore tiny highlights (<3.5% of frame) and full-screen glare (>85%)
+          if (areaRatio >= 0.035 && areaRatio <= 0.85 && touchesOuterFrame < 12) {
+            // Prefer central, larger white document components
+            const centerX = (tl.x + br.x) / 2;
+            const centerY = (tl.y + br.y) / 2;
+            const distFromCenter = Math.hypot(centerX - gridW / 2, centerY - gridH / 2) / gridW;
+            const rankScore = area * (1.2 - distFromCenter);
+
+            if (!bestComp || rankScore > bestComp.rankScore) {
+              bestComp = { tl, tr, br, bl, rankScore };
+            }
+          }
         }
       }
 
-      const activeArea = (gridW - 2 * marginX) * (gridH - 2 * marginY);
-      const coverage = docHits / (activeArea || 1);
-
-      if (coverage < 0.12 || coverage > 0.90) {
-        if (strictMode) return null;
-        if (this.scanPreset === "ID card" || this.scanPreset === "Business") {
-          return [
-            { x: Math.round(w * 0.14), y: Math.round(h * 0.28) },
-            { x: Math.round(w * 0.86), y: Math.round(h * 0.28) },
-            { x: Math.round(w * 0.86), y: Math.round(h * 0.72) },
-            { x: Math.round(w * 0.14), y: Math.round(h * 0.72) }
-          ];
-        }
+      if (bestComp) {
+        const scaleX = w / gridW;
+        const scaleY = h / gridH;
         return [
-          { x: Math.round(w * 0.06), y: Math.round(h * 0.06) },
-          { x: Math.round(w * 0.94), y: Math.round(h * 0.06) },
-          { x: Math.round(w * 0.94), y: Math.round(h * 0.94) },
-          { x: Math.round(w * 0.06), y: Math.round(h * 0.94) }
+          { x: Math.round(bestComp.tl.x * scaleX), y: Math.round(bestComp.tl.y * scaleY) },
+          { x: Math.round(bestComp.tr.x * scaleX), y: Math.round(bestComp.tr.y * scaleY) },
+          { x: Math.round(bestComp.br.x * scaleX), y: Math.round(bestComp.br.y * scaleY) },
+          { x: Math.round(bestComp.bl.x * scaleX), y: Math.round(bestComp.bl.y * scaleY) }
         ];
       }
 
-      const scaleX = w / gridW;
-      const scaleY = h / gridH;
+      if (strictMode) return null;
+
+      // Clean preset-proportioned fallback frame when no distinct white paper boundary exists
+      if (this.scanPreset === "ID card" || this.scanPreset === "Business") {
+        return [
+          { x: Math.round(w * 0.14), y: Math.round(h * 0.28) },
+          { x: Math.round(w * 0.86), y: Math.round(h * 0.28) },
+          { x: Math.round(w * 0.86), y: Math.round(h * 0.72) },
+          { x: Math.round(w * 0.14), y: Math.round(h * 0.72) }
+        ];
+      }
       return [
-        { x: Math.round(tl.x * scaleX), y: Math.round(tl.y * scaleY) },
-        { x: Math.round(tr.x * scaleX), y: Math.round(tr.y * scaleY) },
-        { x: Math.round(br.x * scaleX), y: Math.round(br.y * scaleY) },
-        { x: Math.round(bl.x * scaleX), y: Math.round(bl.y * scaleY) }
+        { x: Math.round(w * 0.08), y: Math.round(h * 0.08) },
+        { x: Math.round(w * 0.92), y: Math.round(h * 0.08) },
+        { x: Math.round(w * 0.92), y: Math.round(h * 0.92) },
+        { x: Math.round(w * 0.08), y: Math.round(h * 0.92) }
       ];
     },
 
@@ -1218,7 +1489,7 @@
         if (!file.type.startsWith("image/")) continue;
         const img = await this._loadImageFromFile(file);
         const rawCanvas = document.createElement("canvas");
-        const maxDim = 1800;
+        const maxDim = 2560;
         let w = img.naturalWidth;
         let h = img.naturalHeight;
         if (Math.max(w, h) > maxDim) {
@@ -1436,52 +1707,7 @@
       const page = this.pages[this.activeIndex];
       if (!page || page.isCropped) return;
 
-      const [tl, tr, br, bl] = page.corners;
-      const topW = Math.hypot(tr.x - tl.x, tr.y - tl.y);
-      const botW = Math.hypot(br.x - bl.x, br.y - bl.y);
-      const leftH = Math.hypot(bl.x - tl.x, bl.y - tl.y);
-      const rightH = Math.hypot(br.x - tr.x, br.y - tr.y);
-
-      const outW = Math.max(200, Math.round(Math.max(topW, botW)));
-      const outH = Math.max(200, Math.round(Math.max(leftH, rightH)));
-
-      const srcCanvas = page.rawCanvas;
-      const srcData = srcCanvas.getContext("2d").getImageData(0, 0, srcCanvas.width, srcCanvas.height);
-
-      const dstCanvas = document.createElement("canvas");
-      dstCanvas.width = outW;
-      dstCanvas.height = outH;
-      const dstCtx = dstCanvas.getContext("2d");
-      const dstData = dstCtx.createImageData(outW, outH);
-
-      const sW = srcCanvas.width;
-      const sH = srcCanvas.height;
-      const sBuf = srcData.data;
-      const dBuf = dstData.data;
-
-      for (let y = 0; y < outH; y++) {
-        const v = y / (outH - 1 || 1);
-        const leftX = tl.x + (bl.x - tl.x) * v;
-        const leftY = tl.y + (bl.y - tl.y) * v;
-        const rightX = tr.x + (br.x - tr.x) * v;
-        const rightY = tr.y + (br.y - tr.y) * v;
-
-        for (let x = 0; x < outW; x++) {
-          const u = x / (outW - 1 || 1);
-          const sx = Math.min(sW - 1, Math.max(0, Math.round(leftX + (rightX - leftX) * u)));
-          const sy = Math.min(sH - 1, Math.max(0, Math.round(leftY + (rightY - leftY) * u)));
-
-          const sIdx = (sy * sW + sx) * 4;
-          const dIdx = (y * outW + x) * 4;
-          dBuf[dIdx] = sBuf[sIdx];
-          dBuf[dIdx + 1] = sBuf[sIdx + 1];
-          dBuf[dIdx + 2] = sBuf[sIdx + 2];
-          dBuf[dIdx + 3] = 255;
-        }
-      }
-
-      dstCtx.putImageData(dstData, 0, 0);
-      page.workingCanvas = dstCanvas;
+      page.workingCanvas = this._warpPerspectiveFromCorners(page.rawCanvas, page.corners);
       page.isCropped = true;
 
       this._processPagePipeline(page);
@@ -1606,7 +1832,7 @@
       }
 
       page.processedCanvas = out;
-      page.processedDataUrl = out.toDataURL("image/jpeg", 0.88);
+      page.processedDataUrl = out.toDataURL("image/jpeg", 0.92);
     },
 
     rotateActive(deg) {
@@ -1809,7 +2035,7 @@
 
         for (let i = 0; i < this.pages.length; i++) {
           const pg = this.pages[i];
-          const blob = await new Promise((res) => pg.processedCanvas.toBlob(res, "image/jpeg", 0.92));
+          const blob = await new Promise((res) => pg.processedCanvas.toBlob(res, "image/jpeg", 0.94));
           const imgFilename = `${baseName}_Page_${i + 1}.jpg`;
 
           const fd = new FormData();
@@ -1835,7 +2061,7 @@
         this._insertItemIntoCurrentVaultView(newFolder);
 
         if (typeof window.showToast === "function") {
-          window.showToast(`✅ Saved ${this.pages.length} images inside "${newFolder.name}"!`, "success");
+          window.showToast(`✅ Saved ${this.pages.length} HD images inside "${newFolder.name}"!`, "success");
         }
         this.close();
       } catch (err) {
@@ -1895,7 +2121,7 @@
             renderW,
             renderH,
             undefined,
-            "FAST"
+            "MEDIUM"
           );
         });
 
@@ -1980,6 +2206,16 @@
         galInput.addEventListener("change", (e) => {
           this.handleFiles(e.target.files);
           e.target.value = "";
+        });
+      }
+
+      // Point 4: Tap-to-Focus on Camera Viewport
+      const viewport = document.getElementById("ps-video-viewport");
+      if (viewport) {
+        viewport.addEventListener("click", (e) => {
+          if (this.viewMode !== "camera") return;
+          if (e.target.closest("button") || e.target.closest(".ps-book-order-pill")) return;
+          this.triggerCameraTapFocus(e.clientX, e.clientY);
         });
       }
 

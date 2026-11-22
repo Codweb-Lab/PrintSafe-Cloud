@@ -697,23 +697,80 @@ body, html {
 .printsafe-footer .company-name { font-weight: 700; color: var(--text-title); }
 
 @media (max-width: 768px) {
-  .explorer-rail-sidebar { position: fixed; left: 0; top: 0; bottom: 40px; transform: translateX(-100%); }
+  .explorer-rail-sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 52px !important;
+    transform: translateX(-100%);
+  }
   .explorer-rail-sidebar.open-drawer { transform: translateX(0); }
   .sidebar-backdrop.open-drawer { display: block; }
   .mobile-close-sidebar { display: block; }
   .mobile-menu-trigger { display: inline-flex; }
   .hide-sm-label { display: none; }
   #dropdown-ui-style span#ui-style-label { display: none; }
+
+  #app-wrapper {
+    height: calc(100vh - 52px) !important;
+  }
+
   .dashboard-viewport-split { padding: 12px; }
   .file-grid { grid-template-columns: repeat(auto-fill, minmax(135px, 1fr)); gap: 10px; }
-  .integrated-preview-column.active-pane { position: fixed; inset: 0; bottom: 40px; width: 100%; height: calc(100vh - 40px); border-radius: 0; z-index: 9500; }
+  .integrated-preview-column.active-pane {
+    position: fixed;
+    inset: 0;
+    bottom: 52px !important;
+    width: 100%;
+    height: calc(100vh - 52px) !important;
+    border-radius: 0;
+    z-index: 9500;
+  }
   .file-list-header { display: none; }
   .file-list-row { flex-wrap: wrap; gap: 6px; }
   .fab-action-btn span.fab-label { display: none; }
   .fab-action-btn.disc { width: 48px; padding: 0; font-size: 20px; }
   .fab-action-btn.upload { width: auto; min-width: 54px; padding: 0 12px; font-size: 18px; }
-  .printsafe-footer { height: auto; padding: 6px 12px !important; }
-  .printsafe-footer .footer-content { flex-direction: column !important; text-align: center !important; gap: 2px !important; }
+
+  .floating-fab-cluster {
+    right: 14px !important;
+    bottom: 62px !important;
+  }
+
+  /* Clean 2-Row Centered Mobile Footer (About/Help Center + Credit Line) */
+  .printsafe-footer {
+    height: 52px !important;
+    min-height: 52px !important;
+    padding: 4px 10px !important;
+    font-size: 11px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+  .printsafe-footer .footer-content {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    gap: 2px !important;
+    width: 100% !important;
+    line-height: 1.25 !important;
+  }
+  .printsafe-footer .footer-content > div,
+  .printsafe-footer .footer-links {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 10px !important;
+    flex-wrap: nowrap !important;
+  }
+  .printsafe-footer p {
+    margin: 0 !important;
+    white-space: nowrap !important;
+    font-size: 10.5px !important;
+  }
+
   .bento-top-header { padding: 0 10px !important; gap: 6px !important; }
   .bento-search-bar { width: auto !important; flex: 1 !important; min-width: 90px !important; padding: 6px 10px !important; }
   .bento-header-actions { gap: 5px !important; }
@@ -858,6 +915,55 @@ body, html {
   pointer-events: none;
   z-index: 8;
   transition: opacity 0.16s ease;
+}
+/* Top-to-Bottom-to-Top Double-Pass Laser Scan Beam on Capture */
+.ps-scan-laser-beam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -10%;
+  height: 54px;
+  background: linear-gradient(
+    to bottom,
+    rgba(56, 189, 248, 0) 0%,
+    rgba(56, 189, 248, 0.35) 75%,
+    rgba(56, 189, 248, 1) 100%
+  );
+  border-bottom: 3.5px solid #ffffff;
+  box-shadow: 0 4px 28px rgba(56, 189, 248, 0.95), 0 0 12px #38bdf8;
+  pointer-events: none;
+  z-index: 12;
+  display: none;
+}
+.ps-scan-laser-beam.scanning {
+  display: block;
+  animation: psDoubleSweepScan 1.15s ease-in-out forwards;
+}
+@keyframes psDoubleSweepScan {
+  0% {
+    top: -6%;
+    opacity: 1;
+    transform: scaleY(1);
+  }
+  48% {
+    top: 94%;
+    opacity: 1;
+    transform: scaleY(1);
+  }
+  52% {
+    top: 94%;
+    opacity: 1;
+    transform: scaleY(-1);
+  }
+  96% {
+    top: -6%;
+    opacity: 1;
+    transform: scaleY(-1);
+  }
+  100% {
+    top: -10%;
+    opacity: 0;
+  }
 }
 .ps-capture-flash.flash {
   opacity: 0.65;
@@ -1577,4 +1683,46 @@ body, html {
   font-weight: 700;
   text-align: center;
   line-height: 1.2;
+}
+/* Tap-to-Focus Reticle & Shutter Auto-Capture Arc */
+.ps-focus-reticle {
+  position: absolute;
+  width: 68px;
+  height: 68px;
+  margin-left: -34px;
+  margin-top: -34px;
+  border: 2px solid #facc15;
+  border-radius: 50%;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 9;
+  box-shadow: 0 0 14px rgba(250, 204, 21, 0.55);
+}
+.ps-focus-reticle .ps-focus-inner {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid #facc15;
+}
+.ps-focus-reticle.pulse {
+  animation: psFocusPulse 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes psFocusPulse {
+  0% { transform: scale(1.45); opacity: 0.4; }
+  65% { transform: scale(0.92); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.ps-shutter-ring {
+  position: relative;
+  border: none !important;
+  padding: 6px !important;
+}
+.ps-shutter-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
