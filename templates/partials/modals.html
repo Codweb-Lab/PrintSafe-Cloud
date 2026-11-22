@@ -2,7 +2,7 @@
 <div id="vault-context-menu"></div>
 
 <!-- 🖥️ CONNECTED DEVICES & LIVE RESTRICTIONS MODAL -->
-<div id="connected-devices-modal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.65); backdrop-filter: blur(8px); z-index: 10000; align-items: center; justify-content: center; padding: 16px;">
+<div id="connected-devices-modal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.65);  z-index: 10000; align-items: center; justify-content: center; padding: 16px;">
   <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 24px; border-radius: var(--radius-card); width: 100%; max-width: 520px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: var(--card-shadow);">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
       <h3 style="margin: 0; font-size: 17px; display:flex; align-items:center; gap:8px;">
@@ -25,7 +25,7 @@
 </div>
 
 <!-- ☁️ CUSTOM MODAL FOR ADDING / RENAMING CLOUD ACCOUNT -->
-<div id="cloud-account-form-modal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(8px); z-index: 10005; align-items: center; justify-content: center; padding: 16px;">
+<div id="cloud-account-form-modal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.7);  z-index: 10005; align-items: center; justify-content: center; padding: 16px;">
   <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 24px; border-radius: var(--radius-card); width: 100%; max-width: 395px; box-shadow: var(--card-shadow);">
     <h3 id="cloud-account-form-title" style="margin-top: 0; margin-bottom: 8px; font-size: 16.5px; display:flex; align-items:center; gap:8px;">
       <i class="ri-cloud-line" style="color:var(--accent);"></i> Connect Cloud Account
@@ -42,7 +42,7 @@
 </div>
 
 <!-- ⚠️ CUSTOM CONFIRMATION MODAL (CLOUD REMOVAL) -->
-<div id="confirm-action-modal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(8px); z-index: 10006; align-items: center; justify-content: center; padding: 16px;">
+<div id="confirm-action-modal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.7);  z-index: 10006; align-items: center; justify-content: center; padding: 16px;">
   <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 24px; border-radius: var(--radius-card); width: 100%; max-width: 370px; box-shadow: var(--card-shadow); text-align: center;">
     <div style="width:48px;height:48px;border-radius:var(--radius-btn);background:rgba(239,68,68,0.12);color:#ef4444;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 12px auto;">
       <i class="ri-alert-line"></i>
@@ -57,7 +57,7 @@
 </div>
 
 <!-- 📱 MOBILE CAMERA QR SCANNER MODAL -->
-<div id="mobile-dashboard-scanner-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(8px); z-index: 10000; align-items: center; justify-content: center; padding: 16px;">
+<div id="mobile-dashboard-scanner-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8);  z-index: 10000; align-items: center; justify-content: center; padding: 16px;">
   <div style="background: var(--surface-card); border: 1px solid var(--border); border-radius: var(--radius-card); padding: 22px; width: 100%; max-width: 380px; text-align: center;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
       <h3 style="margin:0;font-size:16px;"><i class="ri-qr-scan-2-line" style="color:var(--accent);"></i> Scan Desktop QR</h3>
@@ -69,7 +69,7 @@
 </div>
 
 <!-- 🔐 USER SECURITY SETTINGS: CHANGE PASSWORD, QUICK PIN & 2FA AUTHENTICATOR -->
-<div id="passwordModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); backdrop-filter: blur(8px); align-items: center; justify-content: center; z-index: 10000; padding: 16px;">
+<div id="passwordModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65);  align-items: center; justify-content: center; z-index: 10000; padding: 16px;">
   <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 24px; border-radius: var(--radius-card); width: 100%; max-width: 470px; max-height: 88vh; overflow-y: auto; box-shadow: var(--card-shadow);">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
       <h3 style="margin:0;font-weight:800;font-size:17px;display:flex;align-items:center;gap:8px;">
@@ -133,67 +133,136 @@
   </div>
 </div>
 
-<!-- 🌐 HOSTING PROVIDER STORAGE (SSH/SFTP & FTP) MODAL -->
-<div id="remote-storage-modal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px); z-index: 10014; align-items: center; justify-content: center; padding: 16px;">
-  <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 24px; border-radius: var(--radius-card); width: 100%; max-width: 560px; max-height: 88vh; overflow-y: auto; box-shadow: var(--card-shadow);">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-      <h3 style="margin:0;font-size:17px;display:flex;align-items:center;gap:8px;">
-        <i class="ri-server-line" style="color:var(--accent);"></i> Connect Hosting Storage (SSH/SFTP &amp; FTP)
+<!-- 🌐 HOSTING STORAGE MANAGER MODAL (CLOUD DRIVE MANAGER STYLE LIST) -->
+<div id="remote-storage-modal" style="display: none; position: fixed; inset: 0; background: rgba(9, 13, 22, 0.74); z-index: 10012; align-items: center; justify-content: center; padding: 16px;">
+  <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 24px; border-radius: var(--radius-card); width: 100%; max-width: 580px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: var(--card-shadow);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+      <h3 style="margin:0;font-size:17.5px;display:flex;align-items:center;gap:8px;">
+        <i class="ri-server-line" style="color:#38bdf8;"></i> Hosting Storage Manager (SFTP / FTP)
       </h3>
-      <button onclick="document.getElementById('remote-storage-modal').style.display='none'" style="background:none;border:none;font-size:20px;color:var(--text-sub);cursor:pointer;"><i class="ri-close-line"></i></button>
+      <button onclick="closeRemoteStorageModal()" style="background:none;border:none;font-size:20px;color:var(--text-sub);cursor:pointer;"><i class="ri-close-line"></i></button>
     </div>
-    <p style="font-size:12px;color:var(--text-sub);margin:0 0 12px;">
-      Mount storage from your web hosting provider (cPanel, VPS, Hostinger, DigitalOcean) via SFTP or FTP.
+    <p style="font-size:12px;color:var(--text-sub);margin:0 0 16px;">
+      Link multiple cPanel, VPS, or dedicated hosting servers via SFTP/FTP, assign custom labels, or browse folders to mount.
     </p>
 
-    <div class="provider-section-card" style="margin-bottom:14px;">
-      <div style="display:flex;gap:8px;margin-bottom:8px;">
-        <select id="rem-protocol" style="padding:9px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);font-weight:700;">
-          <option value="sftp">SFTP (SSH - Port 22)</option>
-          <option value="ftp">FTP (Port 21)</option>
-        </select>
-        <input type="text" id="rem-label" placeholder="Storage Label (e.g. My VPS Vault)" style="flex:1;padding:9px 12px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);">
+    <div style="overflow-y: auto; padding-right: 4px; display: flex; flex-direction: column; gap: 14px;">
+      <div class="provider-section-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <div style="font-weight:800;font-size:14.5px;color:#38bdf8;display:flex;align-items:center;gap:7px;">
+            <i class="ri-hard-drive-2-line"></i> Connected Hosting Servers
+            <span class="version-pill" id="rem-connected-count-pill">0 Servers</span>
+          </div>
+          <button type="button" onclick="openHostingServerFormModal('add')" class="btn-add-account">
+            <i class="ri-add-line"></i> Add Server
+          </button>
+        </div>
+        <div id="connected-remote-storages-list" style="display:flex;flex-direction:column;gap:8px;"></div>
       </div>
-      <div style="display:flex;gap:8px;margin-bottom:8px;">
-        <input type="text" id="rem-host" placeholder="Host / IP (e.g. sftp.example.com)" style="flex:2;padding:9px 12px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);">
-        <input type="number" id="rem-port" placeholder="Port (22)" value="22" style="width:90px;padding:9px 10px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);">
-      </div>
-      <div style="display:flex;gap:8px;margin-bottom:8px;">
-        <input type="text" id="rem-user" placeholder="SSH / FTP Username" style="flex:1;padding:9px 12px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);">
-        <input type="password" id="rem-pass" placeholder="Password" style="flex:1;padding:9px 12px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);">
-      </div>
-      <input type="text" id="rem-path" placeholder="Remote Folder Path (e.g. /home/user/docs)" value="/" style="width:100%;padding:9px 12px;margin-bottom:10px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);">
-      <button onclick="connectHostingStorage()" class="btn-add-account"><i class="ri-plug-line"></i> Test &amp; Mount Storage</button>
 
-      <details style="margin-top:10px;font-size:11.5px;color:var(--text-sub);">
+      <details class="provider-section-card" style="font-size:12px;color:var(--text-sub);">
         <summary style="cursor:pointer;color:var(--accent);font-weight:700;"><i class="ri-book-open-line"></i> Hosting SSH/SFTP &amp; FTP Setup Guide</summary>
-        <ul style="margin:6px 0 0 18px;line-height:1.6;">
+        <ul style="margin:8px 0 0 18px;line-height:1.6;">
           <li><b>SFTP (Recommended):</b> Use your cPanel/VPS SSH host, port <code>22</code>, and SSH username/password.</li>
           <li><b>FTP:</b> Create an FTP account in your hosting panel, use port <code>21</code>, and set the directory path.</li>
           <li>Files are streamed directly in memory for viewing/printing—nothing is stored on our servers.</li>
         </ul>
       </details>
     </div>
-
-    <div id="connected-remote-storages-list" style="display:flex;flex-direction:column;gap:8px;"></div>
   </div>
 </div>
 
-<!-- ☁️ MULTI-ACCOUNT CLOUD DRIVE MANAGER MODAL -->
-<div id="cloud-sync-modal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.65); backdrop-filter: blur(8px); z-index: 10000; align-items: center; justify-content: center; padding: 16px;">
+<!-- 🌐 SEPARATE POPUP MODAL: ADD / EDIT HOSTING SERVER FORM -->
+<div id="remote-storage-form-modal" style="display: none; position: fixed; inset: 0; background: rgba(9, 13, 22, 0.74); z-index: 10018; align-items: center; justify-content: center; padding: 16px;">
+  <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 24px; border-radius: var(--radius-card); width: 100%; max-width: 460px; box-shadow: var(--card-shadow);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <h3 id="rem-form-heading" style="margin:0;font-size:16.5px;display:flex;align-items:center;gap:8px;">
+        <i class="ri-server-line" style="color:#38bdf8;"></i> Add Hosting Server
+      </h3>
+      <button type="button" onclick="closeHostingServerFormModal()" style="background:none;border:none;font-size:20px;color:var(--text-sub);cursor:pointer;"><i class="ri-close-line"></i></button>
+    </div>
+    <p id="rem-form-desc" style="font-size:12px;color:var(--text-sub);margin:0 0 14px;line-height:1.5;">
+      Enter your cPanel, VPS, or FTP server credentials to mount remote directories directly in your Vault.
+    </p>
+
+    <div style="display:flex;gap:8px;margin-bottom:10px;">
+      <select id="rem-protocol" onchange="if(!editingRemoteStorageId) document.getElementById('rem-port').value = this.value === 'ftp' ? '21' : '22';" style="padding:10px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);font-weight:700;">
+        <option value="sftp">SFTP (Port 22)</option>
+        <option value="ftp">FTP (Port 21)</option>
+      </select>
+      <input type="text" id="rem-label" placeholder="Server Label (e.g. Codweb Hosting)" style="flex:1;padding:10px 12px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);">
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:10px;">
+      <input type="text" id="rem-host" placeholder="Host / IP (e.g. ftp.codweb.in)" style="flex:2;padding:10px 12px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);">
+      <input type="number" id="rem-port" placeholder="Port" value="22" style="width:92px;padding:10px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);">
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:10px;">
+      <input type="text" id="rem-user" placeholder="SSH / FTP Username" style="flex:1;padding:10px 12px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);">
+      <input type="password" id="rem-pass" placeholder="Password" style="flex:1;padding:10px 12px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);">
+    </div>
+
+    <input type="text" id="rem-path" placeholder="Remote Folder Path (e.g. / or /home/user/docs)" value="/" style="width:100%;padding:10px 12px;margin-bottom:16px;border-radius:var(--radius-btn);border:1px solid var(--border);background:var(--bg-app);color:var(--text-title);">
+
+    <div style="display:flex;justify-content:flex-end;gap:10px;">
+      <button type="button" onclick="closeHostingServerFormModal()" style="padding:9px 16px;border:1px solid var(--border);background:transparent;border-radius:var(--radius-btn);cursor:pointer;color:var(--text-title);font-weight:600;">Cancel</button>
+      <button type="button" id="rem-submit-btn" onclick="connectHostingStorage()" style="padding:9px 16px;border:none;background:var(--accent-gradient);color:white;border-radius:var(--radius-btn);cursor:pointer;font-weight:700;display:inline-flex;align-items:center;gap:6px;">
+        <i class="ri-plug-line"></i> Connect Server
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ☁️ MULTI-ACCOUNT CLOUD & HOSTING MANAGER MODAL -->
+<div id="cloud-sync-modal" style="display: none; position: fixed; inset: 0; background: rgba(9, 13, 22, 0.74);  z-index: 10000; align-items: center; justify-content: center; padding: 16px;">
   <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 24px; border-radius: var(--radius-card); width: 100%; max-width: 580px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: var(--card-shadow);">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
       <h3 style="margin: 0; font-size: 17.5px; display:flex; align-items:center; gap:8px;">
-        <i class="ri-cloud-line" style="color:var(--accent);"></i> Multi-Account Cloud Drive Manager
+        <i class="ri-cloud-line" style="color:var(--accent);"></i> Multi-Account Cloud &amp; Hosting Manager
       </h3>
       <button onclick="openCloudDriveManager(false)" style="background: none; border: none; font-size: 20px; color: var(--text-sub); cursor: pointer;">
         <i class="ri-close-line"></i>
       </button>
     </div>
     <p style="color: var(--text-sub); font-size: 12px; margin-top:0; margin-bottom: 16px;">
-      Link multiple accounts per provider, assign custom names, or toggle visibility inside your Vault Explorer.
+      Link multiple cloud accounts or hosting servers (SFTP/FTP), assign custom names, or mount folders inside your Vault Explorer.
     </p>
-    <div id="cloud-providers-list" style="display: flex; flex-direction: column; gap: 14px; overflow-y: auto; padding-right: 4px;"></div>
+    <div style="overflow-y: auto; padding-right: 4px; display: flex; flex-direction: column; gap: 14px;">
+      <div id="cloud-providers-list" style="display: flex; flex-direction: column; gap: 14px;"></div>
+
+      <!-- Hosting Storage (SSH/SFTP & FTP) Provider Card -->
+      <div class="provider-section-card" id="cloud-manager-sftp-card">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px;">
+          <div style="display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 14.5px; color: #38bdf8;">
+            <i class="ri-server-line" style="font-size: 18px;"></i>
+            <span>Hosting Storage (SFTP / FTP)</span>
+          </div>
+          <button type="button" onclick="openHostingServerFormModal('add')" class="btn-add-account" style="padding: 6px 12px; font-size: 12px;">
+            <i class="ri-add-line"></i> Add Server
+          </button>
+        </div>
+        <div id="cloud-manager-sftp-list" style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-size: 12px; color: var(--text-sub);">No SFTP/FTP servers connected yet.</div>
+        </div>
+      </div>
+
+      <!-- Upcoming Integration: DigiLocker (Coming Soon) -->
+      <div class="provider-section-card" style="border: 1px dashed var(--border); opacity: 0.88;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 14.5px; color: var(--text-title);">
+            <i class="ri-government-line" style="color: #38bdf8; font-size: 18px;"></i>
+            <span>DigiLocker (MeriPehchaan)</span>
+          </div>
+          <span class="version-pill" style="background: rgba(245, 158, 11, 0.14); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.35);">
+            Coming Soon
+          </span>
+        </div>
+        <p style="font-size: 12px; color: var(--text-sub); margin: 0; line-height: 1.5;">
+          Connect your Govt. DigiLocker account to directly view &amp; zero-trace print Issued Documents (Aadhaar, PAN, Driving Licence, Marksheets) and DigiLocker Drive files.
+        </p>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -222,7 +291,6 @@
   </div>
 </div>
 
-<!-- 📚 COMPREHENSIVE APPLICATION HELP CENTER MODAL -->
 <!-- 📚 COMPREHENSIVE APPLICATION HELP CENTER MODAL (GPU-ACCELERATED 60FPS SCROLL) -->
 <div id="help-center-modal" onclick="if(event.target===this) closeHelpCenterModal()" style="display: none; position: fixed; inset: 0; background: rgba(9, 13, 22, 0.74); z-index: 10012; align-items: center; justify-content: center; padding: 16px;">
   <div style="background: var(--surface-card); border: 1px solid var(--border); border-radius: var(--radius-card); width: 100%; max-width: 780px; max-height: 88vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: var(--card-shadow); transform: translateZ(0); contain: layout paint;">
@@ -329,7 +397,7 @@
 </div>
 
 <!-- ⚠️ LOGOUT & DISCONNECT DESKTOP CONFIRMATION MODAL -->
-<div id="session-confirm-modal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px); z-index: 10015; align-items: center; justify-content: center; padding: 16px;">
+<div id="session-confirm-modal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.72);  z-index: 10015; align-items: center; justify-content: center; padding: 16px;">
   <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 24px; border-radius: var(--radius-card); width: 100%; max-width: 375px; box-shadow: var(--card-shadow); text-align: center;">
     <div style="width:48px;height:48px;border-radius:var(--radius-btn);background:rgba(239,68,68,0.12);color:#ef4444;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 12px auto;">
       <i class="ri-shield-user-line"></i>
@@ -346,7 +414,7 @@
 <div id="custom-toast-container" style="position: fixed; bottom: 52px; left: 50%; transform: translateX(-50%); z-index: 100005; display: flex; flex-direction: column-reverse; gap: 8px; align-items: center; width: 100%; max-width: 420px; pointer-events: none;"></div>
 
 <!-- 👤 USER PROFILE UPDATE MODAL (POST-LOGIN) -->
-<div id="user-profile-modal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(8px); z-index: 10021; align-items: center; justify-content: center; padding: 16px;">
+<div id="user-profile-modal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.7);  z-index: 10021; align-items: center; justify-content: center; padding: 16px;">
   <div style="background: var(--surface-card); border: 1px solid var(--border); padding: 24px; border-radius: var(--radius-card); width: 100%; max-width: 420px; box-shadow: var(--card-shadow);">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
       <h3 style="margin:0;font-size:17px;display:flex;align-items:center;gap:8px;">

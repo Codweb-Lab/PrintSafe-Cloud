@@ -93,6 +93,7 @@ def _resolve_cloud_upload_target(cloud_folder_id: str, account_id: str, provider
 
     return cloud_folder_id, account_id, provider
 
+
 def _append_item_to_imported_assets_db(account_id: str, provider: str, target_folder: str, new_item: dict):
     """Persists newly uploaded files or created folders directly inside imported_assets.children_data in SQLite."""
     if not new_item or not provider:
@@ -163,11 +164,11 @@ def _append_item_to_imported_assets_db(account_id: str, provider: str, target_fo
 
 
 # ========================================================================
-# 🌐 CUSTOM HOSTING STORAGE (SSH/SFTP & FTP) — ADD, EDIT & HARD DELETE
+# 🌐 CUSTOM HOSTING STORAGE (SSH/SFTP & FTP) — ADD, EDIT, TOGGLE & DELETE
 # ========================================================================
-@vault_bp.route('/api/remote-storage', methods=['GET', 'POST', 'PUT', 'DELETE'])
+@vault_bp.route('/api/remote-storage', methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
 def manage_remote_storage():
-    """Manages SFTP/FTP connections in SQLite and purges orphaned entries on delete."""
+    """Manages SFTP/FTP connections in SQLite including enable/disable toggle and purges orphaned entries on delete."""
     if not session.get('is_authenticated'):
         return jsonify({"error": "Unauthorized"}), 403
 
@@ -213,7 +214,7 @@ def manage_remote_storage():
             if dup:
                 return jsonify({
                     "success": False,
-                    "error": "This SFTP/FTP account is already connected! Click the Edit icon to update it."
+                    "error": "This SFTP/FTP account is already connected! Click the Edit button to update it."
                 }), 409
 
             ok, msg = test_remote_storage_connection(protocol, host, port, username, password, base_path)
@@ -261,15 +262,29 @@ def manage_remote_storage():
             record_sync_event_db('storage_updated', label, f"{protocol.upper()} • {host}")
             return jsonify({"success": True, "message": "Hosting storage updated!", "new_label": label})
 
+        if request.method == 'PATCH':
+            sid = (data.get('storage_id') or '').strip()
+            if not sid:
+                return jsonify({"success": False, "error": "Storage ID required"}), 400
+            is_enabled = 1 if data.get('is_enabled') else 0
+            row = conn.execute("SELECT label FROM remote_storages WHERE storage_id = ?", (sid,)).fetchone()
+            conn.execute("UPDATE remote_storages SET is_enabled = ? WHERE storage_id = ?", (is_enabled, sid))
+            conn.commit()
+            lbl = row['label'] if row and row['label'] else sid
+            record_sync_event_db('storage_toggled', lbl, 'Enabled' if is_enabled else 'Disabled')
+            return jsonify({"success": True, "is_enabled": bool(is_enabled)})
+
         if request.method == 'DELETE':
             sid = (data.get('storage_id') or '').strip()
             deleted_label = "Hosting Storage"
             if sid == 'all':
                 conn.execute("DELETE FROM remote_storages WHERE owner_id = ? OR owner_id = 'user' OR owner_id IS NULL", (owner_id,))
+                conn.execute("DELETE FROM imported_assets WHERE provider IN ('ftp', 'sftp')")
                 conn.execute("DELETE FROM print_queue WHERE provider IN ('ftp', 'sftp')")
             elif sid:
                 row = conn.execute("SELECT label FROM remote_storages WHERE storage_id = ?", (sid,)).fetchone()
                 conn.execute("DELETE FROM remote_storages WHERE storage_id = ?", (sid,))
+                conn.execute("DELETE FROM imported_assets WHERE account_id = ?", (sid,))
                 if row and row['label']:
                     deleted_label = row['label']
                     conn.execute("DELETE FROM print_queue WHERE account_name = ?", (row['label'],))
@@ -284,6 +299,212 @@ def manage_remote_storage():
         if conn:
             conn.close()
 
+
+@vault_bp.route('/api/remote-storage/fetch/<storage_id>', methods=['POST'])
+def browse_remote_storage_directory(storage_id):
+    """Fetches immediate directory items of an SFTP/FTP server with Mount status for the right-side Explorer Drawer."""
+    if not session.get('is_authenticated'):
+        return jsonify({"error": "Unauthorized"}), 403
+
+    data = request.get_json(silent=True) or {}
+    folder_path = (data.get('folder_id') or '').strip()
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        row = conn.execute("SELECT * FROM remote_storages WHERE storage_id = ?", (storage_id,)).fetchone()
+        if not row:
+            return jsonify({"authenticated": False, "error": "Hosting server not found"}), 404
+
+        rem = dict(row)
+        target_dir = rem.get('base_path') or '/' if (not folder_path or folder_path == 'root') else folder_path
+        rem_copy = dict(rem)
+        rem_copy['base_path'] = target_dir
+
+        mounted_ids = set()
+        for r in conn.execute("SELECT cloud_id FROM imported_assets WHERE account_id = ?", (storage_id,)).fetchall():
+            if r['cloud_id']:
+                mounted_ids.add(r['cloud_id'])
+
+        raw_items = list_remote_directory(rem_copy) or []
+        tree = []
+        for it in raw_items:
+            rpath = it.get('remote_path') or f"{target_dir.rstrip('/')}/{it.get('name')}"
+            cid = f"{storage_id}:{rpath}"
+            tree.append({
+                "name": it.get('name'),
+                "type": it.get('type', 'file'),
+                "file_type": it.get('file_type', 'file'),
+                "size": it.get('size', 0),
+                "cloud_id": cid,
+                "remote_path": rpath,
+                "storage_id": storage_id,
+                "is_mounted": cid in mounted_ids
+            })
+        return jsonify({"authenticated": True, "tree": tree})
+    except Exception as e:
+        return jsonify({"authenticated": False, "error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+@vault_bp.route('/api/remote-storage/import', methods=['POST'])
+def mount_remote_storage_asset():
+    """Mounts a specific SFTP/FTP folder or file into PrintSafe Vault."""
+    if not session.get('is_authenticated'):
+        return jsonify({"error": "Unauthorized"}), 403
+
+    data = request.get_json(silent=True) or {}
+    name = (data.get('name') or '').strip()
+    cloud_id = (data.get('cloud_id') or '').strip()
+    asset_type = (data.get('type') or 'folder').strip()
+    storage_id = (data.get('account_id') or data.get('storage_id') or '').strip()
+    owner_id = session.get('user_id', 'user')
+
+    if not storage_id or not cloud_id or not name:
+        return jsonify({"success": False, "error": "Missing SFTP/FTP item details"}), 400
+
+    remote_path = cloud_id.split(':', 1)[1] if ':' in cloud_id else cloud_id
+    conn = None
+    try:
+        conn = get_db_connection()
+        row = conn.execute("SELECT * FROM remote_storages WHERE storage_id = ?", (storage_id,)).fetchone()
+        if not row:
+            return jsonify({"success": False, "error": "Hosting server not found"}), 404
+
+        rem = dict(row)
+        children = []
+        if asset_type == 'folder':
+            rem_sub = dict(rem)
+            rem_sub['base_path'] = remote_path
+            children = list_remote_directory(rem_sub) or []
+
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO imported_assets
+            (cloud_id, owner_id, name, type, children_data, session_id, provider, account_id, account_name)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                cloud_id,
+                owner_id,
+                name,
+                asset_type,
+                json.dumps(children),
+                session.get('session_id', ''),
+                rem['protocol'],
+                storage_id,
+                rem['label']
+            )
+        )
+        conn.commit()
+        record_sync_event_db('storage_mounted', name, rem['label'])
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+def _fetch_cpanel_live_quota(host: str, username: str, password: str):
+    """Fetches exact cPanel account disk usage & total quota directly via cPanel UAPI (port 2083)."""
+    clean_host = host.replace('ftp.', '').replace('sftp.', '').strip()
+    cpanel_user = username.split('@')[0].strip() if '@' in username else username.strip()
+    if not clean_host or not cpanel_user or not password:
+        return 0, 0
+
+    for target_host in dict.fromkeys([clean_host, host]):
+        try:
+            url = f"https://{target_host}:2083/execute/Quota/get_quota_info"
+            resp = requests.get(
+                url,
+                auth=(cpanel_user, password),
+                timeout=6,
+                verify=False
+            )
+            if resp.ok:
+                payload = resp.json()
+                data = payload.get('data') or {}
+                used_mb = float(data.get('megabytes_used') or 0)
+                limit_mb = float(data.get('megabyte_limit') or 0)
+                if used_mb > 0 or limit_mb > 0:
+                    return int(used_mb * 1024 * 1024), int(limit_mb * 1024 * 1024)
+        except Exception:
+            continue
+    return 0, 0
+
+
+@vault_bp.route('/api/remote-storage/quota/<storage_id>', methods=['GET'])
+def get_remote_storage_quota(storage_id):
+    """Fetches exact remote folder bytes + cPanel UAPI / SFTP quota."""
+    if not session.get('is_authenticated'):
+        return jsonify({"error": "Unauthorized"}), 403
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        row = conn.execute("SELECT * FROM remote_storages WHERE storage_id = ?", (storage_id,)).fetchone()
+        if not row:
+            return jsonify({"success": False, "error": "Storage not found"}), 404
+        rem = dict(row)
+    finally:
+        if conn:
+            conn.close()
+
+    protocol = (rem.get('protocol') or 'sftp').lower()
+    host = rem.get('host')
+    port = int(rem.get('port') or (22 if protocol == 'sftp' else 21))
+    username = rem.get('username')
+    password = decrypt_storage_password(rem['encrypted_secret'])
+    base_path = (rem.get('base_path') or '/').strip() or '/'
+
+    folder_used_bytes = 0
+    account_used_bytes = 0
+    total_bytes = 0
+
+    cp_used, cp_total = _fetch_cpanel_live_quota(host, username, password)
+    if cp_used > 0:
+        account_used_bytes = cp_used
+    if cp_total > 0:
+        total_bytes = cp_total
+
+    try:
+        folder_used_bytes, _ = get_remote_storage_usage_stats(rem)
+
+        if protocol == 'sftp' and (total_bytes == 0 or account_used_bytes == 0):
+            try:
+                t = paramiko.Transport((host, port))
+                t.connect(username=username, password=password)
+                sftp = paramiko.SFTPClient.from_transport(t)
+                try:
+                    st = sftp.statvfs(base_path)
+                    t_b = int(st.f_frsize * st.f_blocks)
+                    a_b = int(st.f_frsize * st.f_bavail)
+                    if t_b > 0 and total_bytes == 0:
+                        total_bytes = t_b
+                    if t_b > 0 and account_used_bytes == 0:
+                        account_used_bytes = max(0, t_b - a_b)
+                finally:
+                    sftp.close()
+                    t.close()
+            except Exception as sftp_err:
+                print(f"[QUOTA SFTP STATVFS WARN]: {sftp_err}")
+
+        if account_used_bytes <= 0:
+            account_used_bytes = folder_used_bytes
+
+        return jsonify({
+            "success": True,
+            "storage_id": storage_id,
+            "folder_used_bytes": folder_used_bytes,
+            "account_used_bytes": account_used_bytes,
+            "total_bytes": total_bytes
+        })
+    except Exception as e:
+        print(f"[QUOTA ENDPOINT ERROR] ({storage_id}): {e}")
+        return jsonify({"success": False, "error": str(e)}), 500    
 
 # ========================================================================
 # 🗑️ UNMOUNT MOUNTED FOLDER & UNIVERSAL PERMANENT FILE DELETION
@@ -773,7 +994,24 @@ def fetch_vault_list():
             return sorted(res, key=lambda x: (x['type'] != 'folder', x['name'].lower()))
         vault_tree.extend(scan_user_dir(user_root))
 
-    # Mounted Cloud Drive Assets (Instant SQLite Cache-First Read — 0 Blocking Cloud API Calls on Refresh)
+    # Build lookup of enabled/disabled SFTP/FTP servers
+    enabled_sftp_ids = set()
+    disabled_sftp_ids = set()
+    conn_rem = None
+    try:
+        conn_rem = get_db_connection()
+        for r in conn_rem.execute("SELECT storage_id, is_enabled FROM remote_storages").fetchall():
+            if r["is_enabled"]:
+                enabled_sftp_ids.add(r["storage_id"])
+            else:
+                disabled_sftp_ids.add(r["storage_id"])
+    except Exception:
+        pass
+    finally:
+        if conn_rem:
+            conn_rem.close()
+
+    # Mounted Cloud Drive & SFTP/FTP Assets (Instant SQLite Cache-First Read)
     try:
         acc_map = {}
         disabled_providers = set()
@@ -799,6 +1037,33 @@ def fetch_vault_list():
         for row in get_all_imported_assets_db():
             acc_id = row["account_id"]
             prov = (row["provider"] or "google").lower()
+
+            # Skip mounted items whose parent SFTP/FTP server is disabled
+            if prov in ('sftp', 'ftp'):
+                if acc_id in disabled_sftp_ids:
+                    continue
+                inner_children = []
+                try:
+                    if row["children_data"]:
+                        inner_children = json.loads(row["children_data"])
+                except Exception:
+                    inner_children = []
+                rpath = row["cloud_id"].split(":", 1)[1] if (row["cloud_id"] and ":" in row["cloud_id"]) else "/"
+                vault_tree.append({
+                    "name": row["name"],
+                    "type": row["type"],
+                    "file_type": "folder" if row["type"] == 'folder' else "pdf",
+                    "size": 0,
+                    "children": inner_children,
+                    "cloud_id": row["cloud_id"],
+                    "storage_id": acc_id or "",
+                    "remote_path": rpath,
+                    "provider": prov,
+                    "account_id": acc_id or "",
+                    "account_name": row["account_name"] or "Hosting Server",
+                    "is_expired": False
+                })
+                continue
 
             if acc_id and acc_id in acc_map:
                 if not acc_map[acc_id]["enabled"]:

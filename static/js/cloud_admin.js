@@ -8,9 +8,10 @@ let activeBrowseAccount = null;
 let accountFormState = { mode: "add", provider: "google", accountId: "" };
 let pendingDeleteAccountId = null;
 let editingRemoteStorageId = null;
+let connectedRemoteStoragesList = [];
 
 function setSidebarCloudLoadingState(isLoading) {
-  ["google", "onedrive"].forEach((provider) => {
+  ["google", "onedrive", "sftp"].forEach((provider) => {
     const countEl = document.getElementById(`sidebar-${provider}-count`);
     const drawerEl = document.getElementById(`sidebar-accounts-${provider}`);
     const groupEl = countEl?.closest(".sidebar-provider-group") || countEl?.closest(".rail-btn");
@@ -68,10 +69,15 @@ async function bootAuthenticatedDashboard() {
     try {
       const cachedTreeRaw = sessionStorage.getItem("ps_cached_vault_tree");
       const cachedAccsRaw = sessionStorage.getItem("ps_cached_cloud_accounts");
+      const cachedSftpRaw = sessionStorage.getItem("ps_cached_sftp_storages");
       if (cachedAccsRaw) {
         connectedAccountsList = JSON.parse(cachedAccsRaw) || [];
         updateCloudSummaryBadges();
         renderMultiCloudManagerUI();
+      }
+      if (cachedSftpRaw) {
+        connectedRemoteStoragesList = JSON.parse(cachedSftpRaw) || [];
+        renderSidebarAndModalSftpUI();
       }
       if (cachedTreeRaw) {
         globalVaultTree = JSON.parse(cachedTreeRaw) || [];
@@ -108,7 +114,6 @@ async function bootAuthenticatedDashboard() {
     applyLiveRestrictionsUI();
     initializeMobileScannerFeatures();
     startBackgroundSyncAndRestrictionMonitor();
-    startBackgroundSyncAndRestrictionMonitor();
     startCloudAutoRefreshLoop();
 
     // Show spinner ONLY on cold boot when no cached tree exists
@@ -130,7 +135,9 @@ async function bootAuthenticatedDashboard() {
     // Parallel fast local-DB fetch + non-blocking background cloud delta sync
     Promise.allSettled([
       loadPrintQueue(),
-      loadConnectedCloudAccounts().finally(() => setSidebarCloudLoadingState(false)),
+      Promise.all([loadConnectedCloudAccounts(), loadConnectedRemoteStorages()]).finally(() =>
+        setSidebarCloudLoadingState(false)
+      ),
       refreshConnectedSessionsCount(),
       fetch("/fetch-vault-list", {
         method: "POST",
@@ -179,8 +186,12 @@ async function bootAuthenticatedDashboard() {
 // ========================================================================
 function applyFeatureFlagsToUserUI(features) {
   if (!features) return;
-  const sftpBtn = document.querySelector("[onclick*='openRemoteStorageModal']");
-  if (sftpBtn) sftpBtn.style.display = features.hosting_sftp_ftp === false ? "none" : "";
+  const sftpNavGroup = document.getElementById("sidebar-accounts-sftp")?.closest(".sidebar-provider-group");
+  const sftpSidebarBtn = document.querySelector("[onclick*='openRemoteStorageModal']");
+  const sftpCard = document.getElementById("cloud-manager-sftp-card");
+  if (sftpNavGroup) sftpNavGroup.style.display = features.hosting_sftp_ftp === false ? "none" : "";
+  if (sftpSidebarBtn) sftpSidebarBtn.style.display = features.hosting_sftp_ftp === false ? "none" : "";
+  if (sftpCard) sftpCard.style.display = features.hosting_sftp_ftp === false ? "none" : "";
 
   const printNav = document.querySelector("[onclick*='openPrintQueueView']");
   const printPill = document.getElementById("pill-print-queue");
@@ -762,7 +773,7 @@ function closeMobileScannerFromDashboard() {
 }
 
 // ========================================================================
-// ☁️ MULTI-ACCOUNT CLOUD DRIVE MANAGER (GOOGLE DRIVE & ONEDRIVE)
+// ☁️ MULTI-ACCOUNT CLOUD DRIVE MANAGER (GOOGLE DRIVE, ONEDRIVE & SFTP/FTP)
 // ========================================================================
 async function loadConnectedCloudAccounts() {
   try {
@@ -814,7 +825,7 @@ function renderCloudPickerListItems(listContainer, items) {
           </div>`;
         })
         .join("")
-    : `<div style="text-align:center; color:var(--text-sub); padding:40px; font-size:13px;"><i class="ri-folder-open-line" style="font-size:32px; display:block; margin-bottom:6px; opacity:0.5;"></i>This cloud folder is empty.</div>`;
+    : `<div style="text-align:center; color:var(--text-sub); padding:40px; font-size:13px;"><i class="ri-folder-open-line" style="font-size:32px; display:block; margin-bottom:6px; opacity:0.5;"></i>This folder is empty.</div>`;
 }
 
 function toggleSidebarProviderDrawer(provider) {
@@ -889,7 +900,10 @@ function openCloudDriveManager(show) {
   if (modal) modal.style.display = show ? "flex" : "none";
   const dropdown = document.getElementById("profile-menu-dropdown");
   if (dropdown) dropdown.style.display = "none";
-  if (show) loadConnectedCloudAccounts();
+  if (show) {
+    loadConnectedCloudAccounts();
+    loadConnectedRemoteStorages();
+  }
 }
 
 function renderMultiCloudManagerUI() {
@@ -1111,7 +1125,7 @@ async function toggleCloudAccountState(accountId, isEnabled) {
 }
 
 // ========================================================================
-// 📂 STANDALONE FULL-HEIGHT RIGHT-SIDE CLOUD DRIVE EXPLORER DRAWER
+// 📂 STANDALONE FULL-HEIGHT RIGHT-SIDE CLOUD & HOSTING EXPLORER DRAWER
 // ========================================================================
 function syncCloudPickerDrawerBounds() {
   const drawer = document.getElementById("cloud-picker-drawer");
@@ -1128,6 +1142,7 @@ window.addEventListener("resize", syncCloudPickerDrawerBounds);
 
 function openAccountPickerModal(accountId, accountName, provider) {
   openCloudDriveManager(false);
+  closeRemoteStorageModal();
   activeBrowseAccount = { accountId, accountName, provider };
   cloudNavigationStack = [{ id: "root", name: accountName }];
 
@@ -1135,7 +1150,8 @@ function openAccountPickerModal(accountId, accountName, provider) {
   const titleEl = document.getElementById("cloud-picker-title");
 
   if (titleEl) {
-    titleEl.innerHTML = `<i class="${provider === "google" ? "ri-google-fill" : "ri-microsoft-fill"}" style="color:var(--accent);"></i> ${accountName} Explorer`;
+    const iconCls = provider === "google" ? "ri-google-fill" : provider === "sftp" ? "ri-server-line" : "ri-microsoft-fill";
+    titleEl.innerHTML = `<i class="${iconCls}" style="color:var(--accent);"></i> ${accountName} Explorer`;
   }
 
   syncCloudPickerDrawerBounds();
@@ -1205,11 +1221,16 @@ async function fetchCloudPickerItems(folderId = "root", forceRefresh = false) {
   listContainer.innerHTML = `
     <div style="text-align:center; padding:50px 20px;">
       <div class="vault-spinner" style="margin:0 auto 12px auto;"></div>
-      <div style="font-size:13px; font-weight:600; color:var(--text-sub);">Loading cloud directory items...</div>
+      <div style="font-size:13px; font-weight:600; color:var(--text-sub);">Loading directory items...</div>
     </div>`;
 
+  const endpoint =
+    activeBrowseAccount.provider === "sftp"
+      ? `/api/remote-storage/fetch/${activeBrowseAccount.accountId}`
+      : `/api/cloud/fetch/${activeBrowseAccount.accountId}`;
+
   try {
-    const response = await fetch(`/api/cloud/fetch/${activeBrowseAccount.accountId}`, {
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ folder_id: folderId, force_refresh: forceRefresh })
@@ -1220,7 +1241,7 @@ async function fetchCloudPickerItems(folderId = "root", forceRefresh = false) {
       renderCloudPickerListItems(listContainer, data.tree);
     }
   } catch (e) {
-    listContainer.innerHTML = `<div style="text-align:center; color:#ef4444; padding:30px; font-size:13px;">Failed to load cloud items.</div>`;
+    listContainer.innerHTML = `<div style="text-align:center; color:#ef4444; padding:30px; font-size:13px;">Failed to load directory items.</div>`;
   }
 }
 
@@ -1398,58 +1419,248 @@ async function saveUserQuickPin() {
 }
 
 // ========================================================================
-// 🌐 HOSTING STORAGE (SSH/SFTP & FTP) — ADD, EDIT & REMOVE
+// 🌐 HOSTING STORAGE (SSH/SFTP & FTP) — SIDEBAR, CLOUD MANAGER & CRUD
 // ========================================================================
-async function openRemoteStorageModal() {
+function renderSidebarAndModalSftpUI() {
+  const list = Array.isArray(connectedRemoteStoragesList) ? connectedRemoteStoragesList : [];
+
+  // 1. Update Sidebar Count Badge & Nested Drawer (with Browse Folder icon like Google/OneDrive)
+  const countEl = document.getElementById("sidebar-sftp-count");
+  if (countEl) countEl.innerText = list.length;
+
+  const sideContainer = document.getElementById("sidebar-accounts-sftp");
+  if (sideContainer) {
+    if (list.length === 0) {
+      sideContainer.innerHTML = `<div class="nested-acc-item" onclick="openHostingServerFormModal('add'); toggleMobileSidebar(false);"><span><i class="ri-add-circle-line"></i> Connect Server</span></div>`;
+    } else {
+      sideContainer.innerHTML =
+        list
+          .map((s) => {
+            const isEnabled = s.is_enabled === undefined ? true : Boolean(s.is_enabled);
+            const label = (s.label || s.host || "SFTP Server").trim();
+            const safeLabel = label.replace(/'/g, "\\'");
+            const isActiveFilter = window.activeAccountFilterId === s.storage_id;
+
+            const browseBtnHtml = isEnabled
+              ? `<button onclick="openAccountPickerModal('${s.storage_id}', '${safeLabel}', 'sftp'); toggleMobileSidebar(false);" style="background:none;border:none;color:var(--accent);cursor:pointer;padding:2px 4px;" title="Browse Hosting Folders">
+                   <i class="ri-folder-add-line" style="font-size:14px;"></i>
+                 </button>`
+              : "";
+
+            return `
+            <div class="nested-acc-item ${isActiveFilter ? "active" : ""}" style="${isActiveFilter ? "background:var(--accent-soft);color:var(--accent);font-weight:700;" : ""}">
+              <div onclick="selectSidebarSftpServer('${s.storage_id}', this); toggleMobileSidebar(false);" style="display:flex;align-items:center;gap:8px;overflow:hidden;flex:1;cursor:pointer;" title="Show files from ${label} (${s.host})">
+                <span class="nested-acc-dot ${isEnabled ? "online" : "disabled"}"></span>
+                <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${!isEnabled ? "opacity:0.65;" : ""}">${label}</span>
+              </div>
+              ${browseBtnHtml}
+            </div>`;
+          })
+          .join("") +
+        `<div class="nested-acc-item" onclick="openHostingServerFormModal('add'); toggleMobileSidebar(false);" style="color:var(--accent);margin-top:2px;cursor:pointer;"><span><i class="ri-add-line"></i> Add Server</span></div>`;
+    }
+  }
+
+  // Helper to build Cloud-Drive-Manager-style rows for both modals
+  const buildServerRowHtml = (s) => {
+    const isEnabled = s.is_enabled === undefined ? true : Boolean(s.is_enabled);
+    const proto = (s.protocol || "sftp").toUpperCase();
+    const label = (s.label || s.host || "Hosting Server").trim();
+    const safeLabel = label.replace(/'/g, "\\'");
+    const encodedObj = encodeURIComponent(JSON.stringify(s));
+
+    const browseBtnHtml = isEnabled
+      ? `<button type="button" onclick="openAccountPickerModal('${s.storage_id}', '${safeLabel}', 'sftp')" class="btn-acc-action primary" title="Browse Server Folders"><i class="ri-folder-open-line"></i> Browse</button>`
+      : "";
+
+    return `
+      <div class="cloud-acc-row">
+        <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+          <label class="switch-toggle" title="${isEnabled ? "Disable Server" : "Enable Server"}">
+            <input type="checkbox" ${isEnabled ? "checked" : ""} onchange="toggleHostingStorageState('${s.storage_id}', this.checked)">
+            <span class="slider"></span>
+          </label>
+          <div style="overflow:hidden;${!isEnabled ? "opacity:0.65;" : ""}">
+            <div style="font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:6px;">
+              <span>${label}</span>
+              <span class="version-pill" style="font-size:10px;">${proto}</span>
+            </div>
+            <div style="font-size:11px;color:var(--text-sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${s.username}@${s.host}:${s.port} (${s.base_path || "/"})</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+          <button type="button" onclick="openHostingServerFormModal('edit', '${s.storage_id}', '${encodedObj}')" class="btn-acc-action" title="Edit Server"><i class="ri-edit-2-line"></i> Edit</button>
+          ${browseBtnHtml}
+          <button type="button" onclick="removeHostingStorage('${s.storage_id}')" class="btn-acc-action danger" title="Remove Server"><i class="ri-delete-bin-line"></i></button>
+        </div>
+      </div>`;
+  };
+
+  // 2. Update Multi-Account Cloud & Hosting Manager Modal List
+  const managerBox = document.getElementById("cloud-manager-sftp-list");
+  if (managerBox) {
+    managerBox.innerHTML =
+      list.length === 0
+        ? `<div style="font-size:12px;color:var(--text-sub);padding:8px 4px;">No SFTP/FTP servers connected yet.</div>`
+        : list.map((s) => buildServerRowHtml(s)).join("");
+  }
+
+  // 3. Update Hosting Storage Manager Modal List
+  const countPill = document.getElementById("rem-connected-count-pill");
+  if (countPill) countPill.innerText = `${list.length} ${list.length === 1 ? "Server" : "Servers"}`;
+
+  const modalListBox = document.getElementById("connected-remote-storages-list");
+  if (modalListBox) {
+    modalListBox.innerHTML =
+      list.length === 0
+        ? `<div style="font-size:12px;color:var(--text-sub);padding:8px 4px;">No hosting SFTP/FTP servers connected yet.</div>`
+        : list.map((s) => buildServerRowHtml(s)).join("");
+  }
+}
+
+// Handles sidebar click + active highlight state for FTP/SFTP servers
+function selectSidebarSftpServer(storageId, el) {
+  window.activeAccountFilterId = storageId;
+  document.querySelectorAll(".rail-btn, .nested-acc-item").forEach((node) => {
+    node.classList.remove("active");
+    if (node.classList.contains("nested-acc-item")) {
+      node.style.background = "";
+      node.style.color = "";
+      node.style.fontWeight = "";
+    }
+  });
+
+  const row = el ? el.closest(".nested-acc-item") : null;
+  if (row) {
+    row.classList.add("active");
+    row.style.background = "var(--accent-soft)";
+    row.style.color = "var(--accent)";
+    row.style.fontWeight = "700";
+  }
+
+  if (typeof filterVaultByAccount === "function") {
+    filterVaultByAccount("sftp", storageId, row || el);
+  }
+  renderSidebarAndModalSftpUI();
+}
+window.selectSidebarSftpServer = selectSidebarSftpServer;
+
+function resetHostingStorageForm() {
   editingRemoteStorageId = null;
+  if (document.getElementById("rem-protocol")) document.getElementById("rem-protocol").value = "sftp";
+  if (document.getElementById("rem-label")) document.getElementById("rem-label").value = "";
+  if (document.getElementById("rem-host")) document.getElementById("rem-host").value = "";
+  if (document.getElementById("rem-port")) document.getElementById("rem-port").value = "22";
+  if (document.getElementById("rem-user")) document.getElementById("rem-user").value = "";
+  if (document.getElementById("rem-pass")) {
+    document.getElementById("rem-pass").value = "";
+    document.getElementById("rem-pass").placeholder = "Password";
+  }
+  if (document.getElementById("rem-path")) document.getElementById("rem-path").value = "/";
+
+  const heading = document.getElementById("rem-form-heading");
+  const desc = document.getElementById("rem-form-desc");
+  const submitBtn = document.getElementById("rem-submit-btn");
+
+  if (heading) heading.innerHTML = `<i class="ri-server-line" style="color:#38bdf8;"></i> Add Hosting Server`;
+  if (desc) desc.innerText = "Enter your cPanel, VPS, or FTP server credentials to mount remote directories directly in your Vault.";
+  if (submitBtn) submitBtn.innerHTML = `<i class="ri-plug-line"></i> Connect Server`;
+}
+
+function openHostingServerFormModal(mode = "add", storageId = "", encodedServerObj = null) {
+  resetHostingStorageForm();
+  const modal = document.getElementById("remote-storage-form-modal");
+  if (!modal) return;
+
+  if (mode === "edit" && storageId) {
+    let target = null;
+    if (encodedServerObj) {
+      try { target = JSON.parse(decodeURIComponent(encodedServerObj)); } catch (e) {}
+    }
+    if (!target) {
+      target = connectedRemoteStoragesList.find((item) => item.storage_id === storageId);
+    }
+    if (target) {
+      editingRemoteStorageId = target.storage_id;
+      document.getElementById("rem-protocol").value = target.protocol || "sftp";
+      document.getElementById("rem-label").value = target.label || "";
+      document.getElementById("rem-host").value = target.host || "";
+      document.getElementById("rem-port").value = target.port || (target.protocol === "ftp" ? 21 : 22);
+      document.getElementById("rem-user").value = target.username || "";
+      document.getElementById("rem-pass").value = "";
+      document.getElementById("rem-pass").placeholder = "Leave blank to keep existing password";
+      document.getElementById("rem-path").value = target.base_path || "/";
+
+      const heading = document.getElementById("rem-form-heading");
+      const desc = document.getElementById("rem-form-desc");
+      const submitBtn = document.getElementById("rem-submit-btn");
+      if (heading) heading.innerHTML = `<i class="ri-edit-2-line" style="color:var(--accent);"></i> Edit Hosting Server`;
+      if (desc) desc.innerText = "Update your server host, label, or remote directory path below.";
+      if (submitBtn) submitBtn.innerHTML = `<i class="ri-save-line"></i> Save Changes`;
+    }
+  }
+
+  modal.style.display = "flex";
+  requestAnimationFrame(() => document.getElementById("rem-label")?.focus());
+}
+window.openHostingServerFormModal = openHostingServerFormModal;
+
+function closeHostingServerFormModal() {
+  resetHostingStorageForm();
+  const modal = document.getElementById("remote-storage-form-modal");
+  if (modal) modal.style.display = "none";
+}
+window.closeHostingServerFormModal = closeHostingServerFormModal;
+
+function closeRemoteStorageModal() {
   const modal = document.getElementById("remote-storage-modal");
+  if (modal) modal.style.display = "none";
+}
+window.closeRemoteStorageModal = closeRemoteStorageModal;
+
+async function openRemoteStorageModal() {
+  const modal = document.getElementById("remote-storage-modal");
+  const dropdown = document.getElementById("profile-menu-dropdown");
+  if (dropdown) dropdown.style.display = "none";
   if (!modal) return;
   modal.style.display = "flex";
   await loadConnectedRemoteStorages();
 }
 
 async function loadConnectedRemoteStorages() {
-  const box = document.getElementById("connected-remote-storages-list");
-  if (!box) return;
   try {
     const res = await fetch("/api/remote-storage");
     if (!res.ok) return;
     const data = await res.json();
-    const list = data.storages || [];
-    box.innerHTML = list.length
-      ? list
-          .map(
-            (s) => `
-        <div class="cloud-acc-row">
-          <div>
-            <div style="font-weight:700;font-size:13px;">${s.label} <span class="version-pill">${s.protocol.toUpperCase()}</span></div>
-            <div style="font-size:11px;color:var(--text-sub);">${s.username}@${s.host}:${s.port} (${s.base_path})</div>
-          </div>
-          <div style="display:flex;gap:6px;">
-            <button onclick='editHostingStorage(${JSON.stringify(s)})' class="btn-acc-action primary" title="Edit Storage"><i class="ri-edit-2-line"></i></button>
-            <button onclick="removeHostingStorage('${s.storage_id}')" class="btn-acc-action danger" title="Remove"><i class="ri-delete-bin-line"></i></button>
-          </div>
-        </div>`
-          )
-          .join("")
-      : `<div style="font-size:12px;color:var(--text-sub);">No hosting SFTP/FTP storage connected yet.</div>`;
+    connectedRemoteStoragesList = data.storages || [];
+    try { sessionStorage.setItem("ps_cached_sftp_storages", JSON.stringify(connectedRemoteStoragesList)); } catch (e) {}
+    renderSidebarAndModalSftpUI();
   } catch (e) {}
 }
 
-function editHostingStorage(s) {
-  editingRemoteStorageId = s.storage_id;
-  document.getElementById("rem-protocol").value = s.protocol;
-  document.getElementById("rem-label").value = s.label;
-  document.getElementById("rem-host").value = s.host;
-  document.getElementById("rem-port").value = s.port;
-  document.getElementById("rem-user").value = s.username;
-  document.getElementById("rem-pass").value = "";
-  document.getElementById("rem-pass").placeholder = "Leave blank to keep existing password";
-  document.getElementById("rem-path").value = s.base_path;
-  showToast(`Editing "${s.label}" — update fields and click Test & Mount`, "info");
+async function toggleHostingStorageState(storageId, isEnabled) {
+  try {
+    const res = await fetch("/api/remote-storage", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ storage_id: storageId, is_enabled: isEnabled })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(isEnabled ? "Hosting server enabled" : "Hosting server hidden from Vault", "info");
+      sessionStorage.removeItem("ps_cached_vault_tree");
+      await loadConnectedRemoteStorages();
+      await bootAuthenticatedDashboard();
+    } else {
+      showToast(data.error || "Could not update server status", "error");
+    }
+  } catch (e) {
+    showToast("Network error updating server state", "error");
+  }
 }
 
 async function connectHostingStorage() {
+  const isEditing = Boolean(editingRemoteStorageId);
   const payload = {
     storage_id: editingRemoteStorageId,
     protocol: document.getElementById("rem-protocol").value,
@@ -1460,8 +1671,8 @@ async function connectHostingStorage() {
     password: document.getElementById("rem-pass").value,
     base_path: document.getElementById("rem-path").value.trim() || "/"
   };
-  const method = editingRemoteStorageId ? "PUT" : "POST";
-  showToast(editingRemoteStorageId ? "Updating storage..." : "Testing SSH/FTP connection...", "info");
+  const method = isEditing ? "PUT" : "POST";
+  showToast(isEditing ? "Saving server changes..." : "Testing SSH/FTP connection...", "info");
   try {
     const res = await fetch("/api/remote-storage", {
       method,
@@ -1470,11 +1681,10 @@ async function connectHostingStorage() {
     });
     const data = await res.json();
     if (data.success) {
-      editingRemoteStorageId = null;
+      closeHostingServerFormModal();
       currentFolderNavigation = [];
-      document.getElementById("rem-pass").placeholder = "Password";
-      document.getElementById("remote-storage-modal").style.display = "none";
-      showToast(data.message, "success");
+      sessionStorage.removeItem("ps_cached_vault_tree");
+      showToast(data.message || (isEditing ? "Server updated!" : "Server mounted!"), "success");
       await loadConnectedRemoteStorages();
       await bootAuthenticatedDashboard();
     } else {
@@ -1498,8 +1708,10 @@ async function removeHostingStorage(storageId) {
           body: JSON.stringify({ storage_id: storageId })
         });
         if (res.ok) {
+          if (editingRemoteStorageId === storageId) closeHostingServerFormModal();
           currentFolderNavigation = [];
           globalVaultTree = globalVaultTree.filter((item) => item.storage_id !== storageId);
+          sessionStorage.removeItem("ps_cached_vault_tree");
           closePreviewPane();
           renderCurrentFolderLevel();
           await loadConnectedRemoteStorages();

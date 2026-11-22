@@ -45,6 +45,18 @@
       <div id="sidebar-accounts-onedrive" class="sidebar-nested-accounts"></div>
     </div>
 
+    <!-- Hosting Storage (SFTP/FTP) Expandable Provider Group -->
+    <div class="sidebar-provider-group master-only-nav">
+      <button class="rail-btn" onclick="toggleSidebarProviderDrawer('sftp')">
+        <span class="rail-btn-left"><i class="ri-server-line" style="color:#38bdf8;"></i> Hosting (SFTP/FTP)</span>
+        <span style="display:flex;align-items:center;gap:6px;">
+          <span class="queue-count-badge" id="sidebar-sftp-count">0</span>
+          <i class="ri-arrow-down-s-line" id="sidebar-arrow-sftp" style="transition:0.2s;"></i>
+        </span>
+      </button>
+      <div id="sidebar-accounts-sftp" class="sidebar-nested-accounts"></div>
+    </div>
+
     <button class="rail-btn" onclick="openPrintQueueView(); toggleMobileSidebar(false);">
       <span class="rail-btn-left"><i class="ri-printer-cloud-line"></i> To Be Printed</span>
       <span class="queue-count-badge" id="sidebar-print-queue-count">0</span>
