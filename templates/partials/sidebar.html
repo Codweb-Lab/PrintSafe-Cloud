@@ -17,12 +17,15 @@
 
   <nav class="rail-nav-list">
     <div class="rail-section-label">Storage Explorer</div>
-    <button id="nav-all-vault-btn" class="rail-btn active" onclick="filterVaultByAccount('all', null, this); toggleMobileSidebar(false);">
+    <button id="nav-dashboard-btn" class="rail-btn active" onclick="openDashboardOverview(); toggleMobileSidebar(false);">
+      <span class="rail-btn-left"><i class="ri-dashboard-fill"></i> Dashboard</span>
+    </button>
+    <button id="nav-all-vault-btn" class="rail-btn" onclick="filterVaultByAccount('all', null, this); toggleMobileSidebar(false);">
       <span class="rail-btn-left"><i class="ri-folder-shield-2-line"></i> All Vault Files</span>
     </button>
 
     <!-- Google Drive Expandable Provider Group -->
-    <div class="sidebar-provider-group master-only-nav">
+    <div class="sidebar-provider-group">
       <button class="rail-btn" onclick="toggleSidebarProviderDrawer('google')">
         <span class="rail-btn-left"><i class="ri-google-fill" style="color:#ea4335;"></i> Google Drive</span>
         <span style="display:flex;align-items:center;gap:6px;">
@@ -34,7 +37,7 @@
     </div>
 
     <!-- Microsoft OneDrive Expandable Provider Group -->
-    <div class="sidebar-provider-group master-only-nav">
+    <div class="sidebar-provider-group">
       <button class="rail-btn" onclick="toggleSidebarProviderDrawer('onedrive')">
         <span class="rail-btn-left"><i class="ri-microsoft-fill" style="color:#0078d4;"></i> OneDrive</span>
         <span style="display:flex;align-items:center;gap:6px;">
@@ -46,7 +49,7 @@
     </div>
 
     <!-- Hosting Storage (SFTP/FTP) Expandable Provider Group -->
-    <div class="sidebar-provider-group master-only-nav">
+    <div class="sidebar-provider-group">
       <button class="rail-btn" onclick="toggleSidebarProviderDrawer('sftp')">
         <span class="rail-btn-left"><i class="ri-server-line" style="color:#38bdf8;"></i> Hosting (SFTP/FTP)</span>
         <span style="display:flex;align-items:center;gap:6px;">
@@ -79,6 +82,18 @@
       <span class="rail-btn-left"><i class="ri-settings-4-line"></i> Vault Settings</span>
     </button>
   </nav>
+
+  <!-- Combined Multi-Cloud Storage Usage Bar -->
+  <div id="sidebar-combined-quota-box" style="padding:10px 12px;margin-bottom:8px;border-radius:var(--radius-btn);background:var(--accent-soft);border:1px solid var(--border);">
+    <div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:700;margin-bottom:5px;">
+      <span style="color:var(--text-title);display:inline-flex;align-items:center;gap:5px;"><i class="ri-hard-drive-2-line" style="color:var(--accent);"></i> Cloud Storage</span>
+      <span id="sidebar-combined-quota-pct" style="color:var(--accent);">0%</span>
+    </div>
+    <div style="height:6px;width:100%;background:rgba(148,163,184,0.25);border-radius:99px;overflow:hidden;margin-bottom:5px;">
+      <div id="sidebar-combined-quota-fill" style="height:100%;width:0%;background:var(--accent-gradient);border-radius:99px;transition:width 0.3s ease;"></div>
+    </div>
+    <div id="sidebar-combined-quota-text" style="font-size:10.5px;color:var(--text-sub);font-weight:600;text-align:right;">0 B / 0 B</div>
+  </div>
 
   <div style="border-top: 1px solid var(--border); padding-top: 14px; display: flex; flex-direction: column; gap: 6px;">
     <button class="rail-btn" style="color: #ef4444;" onclick="confirmLogoutModal()">

@@ -7,9 +7,14 @@
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='images/logo3.svg') }}" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet" />
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/vault_core.css') }}?v=1.6" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/vault_core.css') }}?v=2.0" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/themes/theme_glass_bento.css') }}?v=2.0" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/themes/theme_cloudly_bento.css') }}?v=2.0" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/themes/theme_fluent.css') }}?v=2.0" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/themes/theme_ibm_carbon.css') }}?v=2.0" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/themes/theme_cyber_neon.css') }}?v=2.0" />
     <style>
       /* Standalone Right-Side Cloud Drive Explorer Drawer (Topbar to Footer Full Height) */
       #cloud-picker-drawer {
@@ -114,8 +119,11 @@
         <!-- 2. Modular Top Header -->
         {% include 'partials/header.html' %}
 
+        <!-- 2.5 Modular Dashboard Overview -->
+        {% include 'partials/dashboard_overview.html' %}
+
         <!-- 3. Main Explorer Workspace -->
-        <div id="file-manager-dashboard" class="dashboard-viewport-split" style="display: flex;">
+        <div id="file-manager-dashboard" class="dashboard-viewport-split" style="display: none;">
           <div class="category-view-pane">
             
             <div class="quick-filter-pills-bar">
@@ -190,14 +198,40 @@
           <div class="integrated-preview-column">
             <div id="integrated-preview-pane" style="height: 100%; display: flex; flex-direction: column;">
               <div class="preview-header">
-                <div class="preview-title" id="preview-filename-display">Document Preview</div>
+                <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
+                  <div class="preview-title" id="preview-filename-display" style="max-width:100%;">Document Preview</div>
+                </div>
                 <div class="preview-actions">
-                  <button class="btn-action-view" onclick="toggleFullscreenPane()" title="Fullscreen"><i class="ri-fullscreen-line"></i></button>
+                  <button class="btn-action-view fullscreen-only-ctrl" style="display:none;" onclick="adjustPreviewZoom(-0.15)" title="Zoom Out"><i class="ri-zoom-out-line"></i></button>
+                  <span class="version-pill fullscreen-only-ctrl" id="preview-zoom-label" style="display:none;">100%</span>
+                  <button class="btn-action-view fullscreen-only-ctrl" style="display:none;" onclick="adjustPreviewZoom(0.15)" title="Zoom In"><i class="ri-zoom-in-line"></i></button>
+                  <button class="btn-action-view fullscreen-only-ctrl" style="display:none;" onclick="fitPreviewToScreen()" title="Fit to Screen"><i class="ri-fullscreen-exit-line"></i> Fit Screen</button>
+                  <button class="btn-action-view" onclick="toggleFullscreenPane()" title="Toggle Fullscreen"><i class="ri-fullscreen-line"></i></button>
                   <button class="btn-action-view" id="print-action-btn" style="display: none;" onclick="triggerCleanVectorPrint()"><i class="ri-printer-line"></i> Print</button>
                   <button class="btn-action-view" onclick="closePreviewPane()" style="color:#ef4444;"><i class="ri-close-line"></i> Close</button>
                 </div>
               </div>
-              <div class="preview-body-scroll" id="preview-raster-pages-area"></div>
+
+              <!-- Page Jump & Print Page Selection Control Bar -->
+              <div id="pdf-page-controls-bar" style="display:none;padding:8px 14px;background:var(--bg-app);border-bottom:1px solid var(--border);align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:12px;">
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span style="font-weight:700;color:var(--text-sub);">Jump:</span>
+                  <input type="number" id="pdf-jump-page-input" min="1" value="1" style="width:54px;padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--surface-card);color:var(--text-title);font-weight:700;" onchange="jumpToPreviewPage(this.value)" />
+                  <span id="pdf-jump-total-label" style="color:var(--text-sub);font-weight:600;">/ 1</span>
+                </div>
+
+                <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:165px;justify-content:flex-end;">
+                  <input type="text" id="pdf-page-range-input" placeholder="e.g. 1-3, 5 (All)" oninput="applyPageRangeSelectionInput(this.value)" style="width:125px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface-card);color:var(--text-title);font-size:11.5px;" title="Type page numbers/ranges to print, or click checkboxes on pages" />
+                  <button type="button" class="btn-action-view" onclick="toggleSelectAllPdfPages(true)" style="padding:4px 8px;font-size:11px;">All</button>
+                  <button type="button" class="btn-action-view" onclick="toggleSelectAllPdfPages(false)" style="padding:4px 8px;font-size:11px;">Clear</button>
+                </div>
+              </div>
+
+              <!-- Adobe-Style Body: Left Vertical Thumbnails Sidebar (Fullscreen) + Centered Pages Stage -->
+              <div class="preview-workspace-split">
+                <aside id="fullscreen-pages-filmstrip" class="fs-left-thumbs-sidebar" style="display:none;"></aside>
+                <div class="preview-body-scroll" id="preview-raster-pages-area"></div>
+              </div>
             </div>
           </div>
 
