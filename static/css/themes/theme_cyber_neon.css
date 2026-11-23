@@ -1,0 +1,52 @@
+/* ========================================================================
+   ⚡ THEME 5: CYBER NEON (LIGHT & DARK)
+   ======================================================================== */
+html[data-style="cyber"] {
+  --radius-card: 14px;
+  --radius-btn: 8px;
+  --glass-blur: blur(18px);
+  --font-main: 'Plus Jakarta Sans', sans-serif;
+}
+
+html[data-style="cyber"][data-theme="light"],
+html[data-style="cyber"]:not([data-theme]) {
+  color-scheme: light;
+  --bg-app: #f3f0ff;
+  --surface: rgba(255, 255, 255, 0.92);
+  --surface-card: #ffffff;
+  --border: rgba(124, 58, 237, 0.25);
+  --text-title: #1e1b4b;
+  --text-sub: #5b21b6;
+  --accent: #7c3aed;
+  --accent-gradient: linear-gradient(135deg, #7c3aed 0%, #06b6d4 100%);
+  --accent-soft: rgba(124, 58, 237, 0.11);
+  --accent-shadow: 0 4px 16px rgba(124, 58, 237, 0.3);
+  --card-shadow: 0 6px 20px rgba(124, 58, 237, 0.08);
+  --dropdown-shadow: 0 14px 32px rgba(30, 27, 75, 0.18);
+  --scroll-thumb: #a78bfa;
+}
+
+html[data-style="cyber"][data-theme="dark"] {
+  color-scheme: dark;
+  --bg-app: #05050a;
+  --surface: rgba(12, 12, 24, 0.92);
+  --surface-card: #0d0e1c;
+  --border: rgba(0, 245, 212, 0.28);
+  --text-title: #f8fafc;
+  --text-sub: #94a3b8;
+  --accent: #00f5d4;
+  --accent-gradient: linear-gradient(135deg, #7b2cbf 0%, #00f5d4 100%);
+  --accent-soft: rgba(0, 245, 212, 0.14);
+  --accent-shadow: 0 0 18px rgba(0, 245, 212, 0.35);
+  --card-shadow: 0 0 20px rgba(0, 245, 212, 0.08);
+  --dropdown-shadow: 0 16px 36px rgba(0, 0, 0, 0.85), 0 0 12px rgba(0, 245, 212, 0.2);
+  --scroll-thumb: #00f5d4;
+}
+
+html[data-style="cyber"][data-theme="dark"] .ps-stat-card:hover,
+html[data-style="cyber"][data-theme="dark"] .ps-dash-folder-card:hover,
+html[data-style="cyber"][data-theme="dark"] .ps-recent-card:hover,
+html[data-style="cyber"][data-theme="dark"] .file-card:hover {
+  border-color: #00f5d4;
+  box-shadow: 0 0 18px rgba(0, 245, 212, 0.22);
+}

@@ -1,0 +1,54 @@
+/* ========================================================================
+   🪟 THEME 3: MICROSOFT FLUENT (LIGHT & DARK)
+   ======================================================================== */
+html[data-style="fluent"] {
+  --radius-card: 8px;
+  --radius-btn: 6px;
+  --glass-blur: blur(24px);
+  --font-main: 'Segoe UI', 'Plus Jakarta Sans', sans-serif;
+}
+
+html[data-style="fluent"][data-theme="light"],
+html[data-style="fluent"]:not([data-theme]) {
+  color-scheme: light;
+  --bg-app: #f3f3f3;
+  --surface: rgba(249, 249, 249, 0.95);
+  --surface-card: #ffffff;
+  --border: #e5e5e5;
+  --text-title: #1b1b1b;
+  --text-sub: #616161;
+  --accent: #0067c0;
+  --accent-gradient: linear-gradient(180deg, #0067c0 0%, #005a9e 100%);
+  --accent-soft: rgba(0, 103, 192, 0.09);
+  --accent-shadow: 0 2px 6px rgba(0, 103, 192, 0.28);
+  --card-shadow: 0 2px 6px rgba(0, 0, 0, 0.05), 0 0 1px rgba(0, 0, 0, 0.12);
+  --dropdown-shadow: 0 8px 20px rgba(0, 0, 0, 0.14);
+  --scroll-thumb: #c8c8c8;
+}
+
+html[data-style="fluent"][data-theme="dark"] {
+  color-scheme: dark;
+  --bg-app: #202020;
+  --surface: rgba(39, 39, 39, 0.95);
+  --surface-card: #2b2b2b;
+  --border: #3d3d3d;
+  --text-title: #ffffff;
+  --text-sub: #b3b3b3;
+  --accent: #4cc2ff;
+  --accent-gradient: linear-gradient(180deg, #4cc2ff 0%, #0078d4 100%);
+  --accent-soft: rgba(76, 194, 255, 0.14);
+  --accent-shadow: 0 2px 8px rgba(76, 194, 255, 0.25);
+  --card-shadow: 0 4px 12px rgba(0, 0, 0, 0.35), 0 0 1px rgba(255, 255, 255, 0.08);
+  --dropdown-shadow: 0 10px 28px rgba(0, 0, 0, 0.65);
+  --scroll-thumb: #4b4b4b;
+}
+
+html[data-style="fluent"] .rail-btn.active {
+  position: relative;
+}
+html[data-style="fluent"] .ps-stat-card,
+html[data-style="fluent"] .ps-dash-card,
+html[data-style="fluent"] .ps-dash-folder-card,
+html[data-style="fluent"] .ps-recent-card {
+  border-radius: 8px;
+}

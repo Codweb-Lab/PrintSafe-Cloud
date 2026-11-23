@@ -1,0 +1,77 @@
+/* ========================================================================
+   🧱 THEME 4: IBM CARBON DESIGN SYSTEM (SHARP 0PX GEOMETRY, LIGHT & DARK)
+   ======================================================================== */
+html[data-style="carbon"] {
+  --radius-card: 0px;
+  --radius-btn: 0px;
+  --glass-blur: none;
+  --card-shadow: none;
+  --font-main: 'IBM Plex Sans', sans-serif;
+}
+
+html[data-style="carbon"][data-theme="light"],
+html[data-style="carbon"]:not([data-theme]) {
+  color-scheme: light;
+  --bg-app: #f4f4f4;
+  --surface: #ffffff;
+  --surface-card: #ffffff;
+  --border: #c6c6c6;
+  --text-title: #161616;
+  --text-sub: #525252;
+  --accent: #0f62fe;
+  --accent-gradient: #0f62fe;
+  --accent-soft: rgba(15, 98, 254, 0.1);
+  --accent-shadow: none;
+  --dropdown-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  --scroll-thumb: #8d8d8d;
+}
+
+html[data-style="carbon"][data-theme="dark"] {
+  color-scheme: dark;
+  --bg-app: #161616;
+  --surface: #262626;
+  --surface-card: #262626;
+  --border: #393939;
+  --text-title: #f4f4f4;
+  --text-sub: #c6c6c6;
+  --accent: #78a9ff;
+  --accent-gradient: #0f62fe;
+  --accent-soft: rgba(120, 169, 255, 0.16);
+  --accent-shadow: none;
+  --dropdown-shadow: 0 6px 16px rgba(0, 0, 0, 0.7);
+  --scroll-thumb: #525252;
+}
+
+/* IBM Carbon Signature Sharp Edges & Flat Elevation Across Dashboard & Explorer */
+html[data-style="carbon"] .ps-stat-card,
+html[data-style="carbon"] .ps-dash-card,
+html[data-style="carbon"] .ps-dash-folder-card,
+html[data-style="carbon"] .ps-recent-card,
+html[data-style="carbon"] .ps-stat-icon,
+html[data-style="carbon"] .ps-recent-icon-box,
+html[data-style="carbon"] .ps-insight-icon,
+html[data-style="carbon"] .ps-dash-btn-outline,
+html[data-style="carbon"] .ps-dash-btn-primary,
+html[data-style="carbon"] .ps-dash-cta-full,
+html[data-style="carbon"] .file-card,
+html[data-style="carbon"] .file-list-row,
+html[data-style="carbon"] .navigation-toolbar,
+html[data-style="carbon"] .filter-pill,
+html[data-style="carbon"] .rail-btn,
+html[data-style="carbon"] .bento-search-bar {
+  border-radius: 0px !important;
+  box-shadow: none !important;
+}
+
+html[data-style="carbon"] .ps-stat-card:hover,
+html[data-style="carbon"] .ps-dash-folder-card:hover,
+html[data-style="carbon"] .ps-recent-card:hover,
+html[data-style="carbon"] .file-card:hover {
+  transform: none !important;
+  border-color: var(--accent) !important;
+  background: var(--accent-soft) !important;
+}
+
+html[data-style="carbon"] .rail-btn.active {
+  border-left: 3px solid #78a9ff;
+}
