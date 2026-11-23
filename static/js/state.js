@@ -184,13 +184,13 @@ function selectModernUIStyle(styleName, labelText, itemEl) {
 }
 
 function setUIStylePreset(styleName, customLabel = null) {
-  const validStyle = styleNamesMap[styleName] ? styleName : "glass";
+  const validStyle = styleNamesMap[styleName] ? styleName : "cloudly";
   document.documentElement.setAttribute("data-style", validStyle);
   localStorage.setItem("vault_style_preset", validStyle);
   const hiddenInput = document.getElementById("ui-style-selector");
   if (hiddenInput) hiddenInput.value = validStyle;
   const labelEl = document.getElementById("ui-style-label");
-  if (labelEl) labelEl.innerText = customLabel || styleNamesMap[validStyle] || "Glass Bento";
+  if (labelEl) labelEl.innerText = customLabel || styleNamesMap[validStyle] || "Cloudly Bento";
 
   const wrapper = document.getElementById("dropdown-ui-style");
   if (wrapper) {
@@ -218,10 +218,10 @@ function setThemeMode(mode) {
 }
 
 function syncSavedDesignAndTheme() {
-  const savedStyle = localStorage.getItem("vault_style_preset") || "glass";
+  const savedStyle = localStorage.getItem("vault_style_preset") || "cloudly";
   setUIStylePreset(savedStyle);
 
-  const savedTheme = localStorage.getItem("vault_theme_pref") || "system";
+  const savedTheme = localStorage.getItem("vault_theme_pref") || "dark";
   applyEffectiveTheme(savedTheme);
 }
 

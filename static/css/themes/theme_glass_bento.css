@@ -1,8 +1,7 @@
 /* ========================================================================
    ✨ THEME 1: GLASS BENTO (LIGHT & DARK)
    ======================================================================== */
-html[data-style="glass"],
-html:not([data-style]) {
+html[data-style="glass"]{
   --radius-card: 18px;
   --radius-btn: 11px;
   --glass-blur: blur(20px);

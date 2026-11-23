@@ -24,9 +24,9 @@
 
     <script>
       (function () {
-        const savedStyle = localStorage.getItem("vault_style_preset") || "glass";
+        const savedStyle = localStorage.getItem("vault_style_preset") || "cloudly";
         document.documentElement.setAttribute("data-style", savedStyle);
-        const savedTheme = localStorage.getItem("vault_theme_pref") || "system";
+        const savedTheme = localStorage.getItem("vault_theme_pref") || "dark";
         if (savedTheme === "system") {
           const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
           document.documentElement.setAttribute("data-theme", isDark ? "dark" : "light");

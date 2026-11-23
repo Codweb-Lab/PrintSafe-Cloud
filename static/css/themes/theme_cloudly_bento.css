@@ -1,7 +1,8 @@
 /* ========================================================================
    🍑 THEME 2: CLOUDLY BENTO (Poppins + Warm Pastel Bento + 3D Folders)
    ======================================================================== */
-html[data-style="cloudly"] {
+html[data-style="cloudly"],
+html:not([data-style]) {
   --radius-card: 20px;
   --radius-btn: 12px;
   --glass-blur: blur(16px);
