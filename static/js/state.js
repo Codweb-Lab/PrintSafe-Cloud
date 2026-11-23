@@ -60,7 +60,8 @@ function formatFileSize(bytes) {
   const units = ["B", "KB", "MB", "GB", "TB"];
   const idx = Math.min(units.length - 1, Math.floor(Math.log(num) / Math.log(1024)));
   const val = num / Math.pow(1024, idx);
-  return `${val >= 100 || idx === 0 ? val.toFixed(0) : val.toFixed(2).replace(/\.00$/, "")} ${units[idx]}`;
+  if (idx === 0) return `${Math.round(val)} B`;
+  return `${val.toFixed(2)} ${units[idx]}`;
 }
 window.formatFileSize = formatFileSize;
 
@@ -84,7 +85,7 @@ function getProviderBadgeHTML(item) {
 }
 
 // ========================================================================
-// 🔔 TOAST NOTIFICATIONS & CONFIRMATION MODALS
+// 🔔 TOAST NOTIFICATIONS & GLOBAL MODALS (ABOUT / HELP / CONFIRM)
 // ========================================================================
 function showToast(message, type = "error") {
   const container = document.getElementById("custom-toast-container");
@@ -105,11 +106,22 @@ function openAboutModal() {
   const dropdown = document.getElementById("profile-menu-dropdown");
   if (dropdown) dropdown.style.display = "none";
 }
+window.openAboutModal = openAboutModal;
+window.openAboutAppModal = openAboutModal;
 
 function closeAboutModal() {
   const m = document.getElementById("about-app-modal");
   if (m) m.style.display = "none";
 }
+window.closeAboutModal = closeAboutModal;
+
+function openHelpCenterModal() {
+  const modal = document.getElementById("help-center-modal");
+  const profileDrop = document.getElementById("profile-menu-dropdown");
+  if (profileDrop) profileDrop.style.display = "none";
+  if (modal) modal.style.display = "flex";
+}
+window.openHelpCenterModal = openHelpCenterModal;
 
 function openSessionConfirmModal(title, message, btnLabel, onConfirm) {
   const modal = document.getElementById("session-confirm-modal");
@@ -155,6 +167,7 @@ document.addEventListener("click", closeAllModernDropdowns);
 
 const styleNamesMap = {
   glass: "Glass Bento",
+  cloudly: "Cloudly Bento",
   fluent: "Microsoft Fluent",
   carbon: "IBM Carbon",
   cyber: "Cyber Neon"
@@ -171,17 +184,18 @@ function selectModernUIStyle(styleName, labelText, itemEl) {
 }
 
 function setUIStylePreset(styleName, customLabel = null) {
-  document.documentElement.setAttribute("data-style", styleName);
-  localStorage.setItem("vault_style_preset", styleName);
+  const validStyle = styleNamesMap[styleName] ? styleName : "glass";
+  document.documentElement.setAttribute("data-style", validStyle);
+  localStorage.setItem("vault_style_preset", validStyle);
   const hiddenInput = document.getElementById("ui-style-selector");
-  if (hiddenInput) hiddenInput.value = styleName;
+  if (hiddenInput) hiddenInput.value = validStyle;
   const labelEl = document.getElementById("ui-style-label");
-  if (labelEl) labelEl.innerText = customLabel || styleNamesMap[styleName] || "Glass Bento";
+  if (labelEl) labelEl.innerText = customLabel || styleNamesMap[validStyle] || "Glass Bento";
 
   const wrapper = document.getElementById("dropdown-ui-style");
   if (wrapper) {
     wrapper.querySelectorAll(".modern-dropdown-item").forEach((item) => {
-      item.classList.toggle("active", item.getAttribute("data-value") === styleName);
+      item.classList.toggle("active", item.getAttribute("data-value") === validStyle);
     });
   }
 }
@@ -203,16 +217,21 @@ function setThemeMode(mode) {
   applyEffectiveTheme(mode);
 }
 
-(function initDesignAndTheme() {
+function syncSavedDesignAndTheme() {
   const savedStyle = localStorage.getItem("vault_style_preset") || "glass";
   setUIStylePreset(savedStyle);
 
   const savedTheme = localStorage.getItem("vault_theme_pref") || "system";
   applyEffectiveTheme(savedTheme);
-  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
-    if ((localStorage.getItem("vault_theme_pref") || "system") === "system") applyEffectiveTheme("system");
-  });
-})();
+}
+
+// Apply immediately (before paint) AND again once DOM elements (dropdowns/buttons) are parsed
+syncSavedDesignAndTheme();
+document.addEventListener("DOMContentLoaded", syncSavedDesignAndTheme);
+
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  if ((localStorage.getItem("vault_theme_pref") || "system") === "system") applyEffectiveTheme("system");
+});
 
 function toggleProfileDropdown() {
   if (sessionLoginType === "qr_restricted" && activeRestrictions.disable_profile) {

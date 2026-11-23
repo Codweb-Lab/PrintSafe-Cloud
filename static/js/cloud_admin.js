@@ -88,11 +88,11 @@ function updateCombinedSidebarStorageBar() {
   if (textEl) {
     const usedStr = typeof formatFileSize === "function" ? formatFileSize(totalUsed) : `${totalUsed} B`;
     const capStr =
-  totalCap > 0 && typeof formatCombinedCapacity === "function"
-    ? formatCombinedCapacity(totalCap)
-    : totalCap > 0 && typeof formatFileSize === "function"
-    ? formatFileSize(totalCap)
-    : "∞";
+      totalCap > 0 && typeof formatCombinedCapacity === "function"
+        ? formatCombinedCapacity(totalCap)
+        : totalCap > 0 && typeof formatFileSize === "function"
+        ? formatFileSize(totalCap)
+        : "∞";
     textEl.innerText = `${usedStr} / ${capStr}`;
   }
 }
@@ -220,6 +220,11 @@ async function bootAuthenticatedDashboard() {
 
     const authBox = document.getElementById("auth-container");
     if (authBox) authBox.style.display = "none";
+
+    // Show Help button in footer ONLY after authentication
+    const footerHelpBtn = document.getElementById("footer-help-btn");
+    if (footerHelpBtn) footerHelpBtn.style.display = "inline-flex";
+
     applyActiveWorkspaceContainerVisibility();
 
     applyLiveRestrictionsUI();
@@ -1923,6 +1928,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (status.restrictions) activeRestrictions = status.restrictions;
       await bootAuthenticatedDashboard();
     } else {
+      const footerHelpBtn = document.getElementById("footer-help-btn");
+      if (footerHelpBtn) footerHelpBtn.style.display = "none";
       window.location.replace("/");
     }
   } catch (e) {}
