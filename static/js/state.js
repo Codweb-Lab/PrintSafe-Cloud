@@ -55,11 +55,14 @@ let backgroundSyncInterval = null;
 // 🛠️ FORMATTING & BADGE HELPERS
 // ========================================================================
 function formatFileSize(bytes) {
-  if (!bytes || bytes === 0) return "Cloud Sync";
-  const kb = bytes / 1024;
-  if (kb < 1024) return kb.toFixed(1) + " KB";
-  return (kb / 1024).toFixed(1) + " MB";
+  const num = Number(bytes || 0);
+  if (!num || num <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const idx = Math.min(units.length - 1, Math.floor(Math.log(num) / Math.log(1024)));
+  const val = num / Math.pow(1024, idx);
+  return `${val >= 100 || idx === 0 ? val.toFixed(0) : val.toFixed(2).replace(/\.00$/, "")} ${units[idx]}`;
 }
+window.formatFileSize = formatFileSize;
 
 function getDisplayFolderName(rawName) {
   if (activeRestrictions.mask_folders) return "xxxxx";
