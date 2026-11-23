@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="light" data-style="glass">
+<html lang="en" data-theme="dark" data-style="cloudly">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
@@ -10,6 +10,11 @@
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet" />
     <link rel="stylesheet" href="{{ url_for('static', filename='css/vault_core.css') }}?v=1.0" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/themes/theme_glass_bento.css') }}?v=2.0" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/themes/theme_cloudly_bento.css') }}?v=2.0" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/themes/theme_fluent.css') }}?v=2.0" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/themes/theme_ibm_carbon.css') }}?v=2.0" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/themes/theme_cyber_neon.css') }}?v=2.0" />
   </head>
   <body>
     {% include 'partials/auth.html' %}

@@ -1,12 +1,12 @@
 <footer class="printsafe-footer">
   <div class="footer-content" style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 12px;">
-    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-      <p style="margin: 0; white-space: nowrap;">© 2026 PrintSafe-Cloud. All rights reserved.</p>
-      <span style="opacity: 0.35;">|</span>
-      <button type="button" onclick="openAboutModal()" style="background: none; border: none; padding: 0; color: var(--accent); font-size: 12px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; font-family: inherit;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <p>&copy; 2026 PrintSafe-Cloud. All rights reserved.</p>
+      <span style="opacity:0.4;">|</span>
+      <button type="button" onclick="openAboutModal()" style="display:none !important; background:none;border:none;color:var(--accent);font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;padding:0;display:inline-flex;align-items:center;gap:4px;">
         <i class="ri-information-line"></i> About
       </button>
-      <button type="button" onclick="openHelpCenterModal()" style="background: none; border: none; padding: 0; color: var(--accent); font-size: 12px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; font-family: inherit;">
+      <button type="button" id="footer-help-btn" onclick="openHelpCenterModal()" style="background:none;border:none;color:var(--accent);font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;padding:0;display:none;align-items:center;gap:4px;">
         <i class="ri-question-line"></i> Help
       </button>
     </div>
