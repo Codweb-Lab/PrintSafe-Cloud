@@ -24,7 +24,9 @@ ALLOWED_EXTENSIONS = {'pdf', 'jpg', 'jpeg', 'png', 'webp', 'ipynb'}
 # Fast in-memory TTL caches to eliminate redundant OAuth & directory network calls
 _TOKEN_MEM_CACHE = {}          # account_id -> (access_token, expires_at)
 _CLOUD_DIR_MEM_CACHE = {}      # (account_id, folder_id, max_depth) -> (timestamp, items)
+_QUOTA_MEM_CACHE = {}          # account_id -> (timestamp, used_bytes, total_bytes)
 _DIR_CACHE_TTL = 120.0         # 2 minutes fresh cache for instant folder browsing
+_QUOTA_CACHE_TTL = 300.0       # 5 minutes cache for storage quota
 
 
 def invalidate_cloud_dir_cache(account_id: str = None):
@@ -35,6 +37,47 @@ def invalidate_cloud_dir_cache(account_id: str = None):
     keys_to_del = [k for k in _CLOUD_DIR_MEM_CACHE if k[0] == account_id]
     for k in keys_to_del:
         _CLOUD_DIR_MEM_CACHE.pop(k, None)
+
+
+def _fetch_account_storage_quota(provider: str, token: str, account_id: str):
+    """Fetches real (used_bytes, total_bytes) for Google Drive or OneDrive with 5-min RAM cache."""
+    if not token or not account_id:
+        return 0, 0
+    now = time.time()
+    cached = _QUOTA_MEM_CACHE.get(account_id)
+    if cached and (now - cached[0]) < _QUOTA_CACHE_TTL:
+        return cached[1], cached[2]
+
+    used_b, total_b = 0, 0
+    try:
+        headers = {'Authorization': f'Bearer {token}'}
+        if provider == 'google':
+            resp = requests.get(
+                'https://www.googleapis.com/drive/v3/about',
+                headers=headers,
+                params={'fields': 'storageQuota(usage,limit)'},
+                timeout=8
+            )
+            if resp.ok:
+                sq = resp.json().get('storageQuota') or {}
+                used_b = int(sq.get('usage') or 0)
+                total_b = int(sq.get('limit') or 0)
+        else:
+            resp = requests.get(
+                'https://graph.microsoft.com/v1.0/me/drive',
+                headers=headers,
+                params={'$select': 'quota'},
+                timeout=8
+            )
+            if resp.ok:
+                q = resp.json().get('quota') or {}
+                used_b = int(q.get('used') or 0)
+                total_b = int(q.get('total') or 0)
+    except Exception:
+        pass
+
+    _QUOTA_MEM_CACHE[account_id] = (now, used_b, total_b)
+    return used_b, total_b
 
 
 # ========================================================================
@@ -229,37 +272,96 @@ def sync_all_mounted_cloud_assets():
 
     return jsonify({"success": True, "updated": updated_count, "changed": any_tree_changed})
 
+
 # ========================================================================
 # ☁️ LIST, TOGGLE, RENAME & REMOVE CONNECTED CLOUD ACCOUNTS
 # ========================================================================
 @cloud_bp.route('/api/cloud/accounts', methods=['GET'])
 def list_connected_cloud_accounts():
-    """Returns all linked Google Drive and OneDrive accounts for the authenticated user."""
+    """Returns all linked Google Drive and OneDrive accounts with live storage quota."""
     if not session.get('is_authenticated'):
         return jsonify({"error": "Unauthorized"}), 403
 
     owner_id = session.get('user_id', 'user')
+    is_qr = session.get('login_type') == 'qr_restricted'
     conn = None
     try:
         conn = get_db_connection()
-        rows = conn.execute(
-            """
-            SELECT account_id, provider, custom_name, email, is_enabled, token_status, created_at
-            FROM cloud_accounts
-            WHERE owner_id = ? OR owner_id = 'admin' OR owner_id IS NULL
-            ORDER BY created_at DESC
-            """,
-            (owner_id,)
-        ).fetchall()
+
+        if is_qr and (not owner_id or owner_id in ('user', 'shared')) and session.get('session_id'):
+            try:
+                qr_row = conn.execute(
+                    "SELECT owner_id FROM qr_sessions WHERE session_id = ?",
+                    (session.get('session_id'),)
+                ).fetchone()
+                if qr_row and qr_row['owner_id']:
+                    owner_id = qr_row['owner_id']
+                    session['user_id'] = owner_id
+            except Exception:
+                pass
+
+        if is_qr:
+            rows = conn.execute(
+                """
+                SELECT account_id, provider, custom_name, email, is_enabled, token_status, created_at
+                FROM cloud_accounts
+                ORDER BY created_at DESC
+                """
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT account_id, provider, custom_name, email, is_enabled, token_status, created_at
+                FROM cloud_accounts
+                WHERE owner_id = ? OR owner_id = 'admin' OR owner_id = 'user' OR owner_id IS NULL
+                ORDER BY created_at DESC
+                """,
+                (owner_id,)
+            ).fetchall()
 
         accounts = []
         for r in rows:
             acc = dict(r)
             tok = get_valid_account_token(acc['account_id']) if acc['is_enabled'] else None
             acc['is_expired'] = bool(acc['is_enabled'] and tok is None)
+            if tok:
+                used_b, total_b = _fetch_account_storage_quota(acc['provider'], tok, acc['account_id'])
+            else:
+                used_b, total_b = 0, 0
+            acc['used_bytes'] = used_b
+            acc['total_bytes'] = total_b
             accounts.append(acc)
 
-        return jsonify({"accounts": accounts})
+        # Safely resolve real user profile name & email regardless of users table column names
+        user_profile = {}
+        try:
+            u_cols = [c[1] for c in conn.execute("PRAGMA table_info(users)").fetchall()]
+            name_col = "full_name" if "full_name" in u_cols else ("name" if "name" in u_cols else ("username" if "username" in u_cols else None))
+            email_col = "email" if "email" in u_cols else None
+            id_col = "user_id" if "user_id" in u_cols else ("id" if "id" in u_cols else None)
+
+            u_row = None
+            if id_col and owner_id:
+                u_row = conn.execute(f"SELECT * FROM users WHERE {id_col} = ? LIMIT 1", (owner_id,)).fetchone()
+            if not u_row and email_col and owner_id:
+                u_row = conn.execute(f"SELECT * FROM users WHERE {email_col} = ? LIMIT 1", (owner_id,)).fetchone()
+            if not u_row:
+                u_row = conn.execute("SELECT * FROM users ORDER BY rowid ASC LIMIT 1").fetchone()
+
+            if u_row:
+                u_dict = dict(u_row)
+                u_name = (u_dict.get(name_col) or "").strip() if name_col else ""
+                u_email = (u_dict.get(email_col) or "").strip() if email_col else ""
+                if not u_name and u_email:
+                    u_name = u_email.split("@")[0]
+                user_profile = {
+                    "user_name": u_name,
+                    "user_email": u_email
+                }
+        except Exception as prof_err:
+            print(f"[USER PROFILE LOOKUP WARN]: {prof_err}")
+
+        return jsonify({"accounts": accounts, "user_profile": user_profile})
     except sqlite3.Error as e:
         return jsonify({"error": f"Database error: {e}"}), 500
     finally:
@@ -281,6 +383,7 @@ def update_cloud_account():
         return jsonify({"success": False, "error": "Account ID required"}), 400
 
     invalidate_cloud_dir_cache(account_id)
+    _QUOTA_MEM_CACHE.pop(account_id, None)
     conn = None
     try:
         conn = get_db_connection()
@@ -445,6 +548,7 @@ def google_cloud_oauth_callback():
             )
         conn.commit()
         _TOKEN_MEM_CACHE[acc_id] = (access_token, exp_ts)
+        _QUOTA_MEM_CACHE.pop(acc_id, None)
         refresh_mounted_assets_for_account(acc_id, 'google', access_token, effective_label)
 
         return """
@@ -535,6 +639,7 @@ def onedrive_cloud_oauth_callback():
             )
         conn.commit()
         _TOKEN_MEM_CACHE[acc_id] = (access_token, exp_ts)
+        _QUOTA_MEM_CACHE.pop(acc_id, None)
         refresh_mounted_assets_for_account(acc_id, 'onedrive', access_token, effective_label)
 
         return """
@@ -587,7 +692,7 @@ def _fetch_cloud_folder_children(
                 headers=headers,
                 params={
                     'q': query,
-                    'fields': 'files(id, name, mimeType, size)',
+                    'fields': 'files(id, name, mimeType, size, modifiedTime)',
                     'pageSize': 250
                 },
                 timeout=10
@@ -599,6 +704,7 @@ def _fetch_cloud_folder_children(
                 name = f.get('name', '')
                 mime = f.get('mimeType', '')
                 cid = f.get('id')
+                mod_t = (f.get('modifiedTime') or '')[:10]
                 is_folder = mime == 'application/vnd.google-apps.folder'
                 ext = name.rsplit('.', 1)[-1].lower() if '.' in name else ''
 
@@ -611,6 +717,7 @@ def _fetch_cloud_folder_children(
                         'account_id': account_id,
                         'account_name': account_name,
                         'provider': 'google',
+                        'modified_time': mod_t,
                         'children': []
                     }
                     items.append(folder_node)
@@ -625,7 +732,8 @@ def _fetch_cloud_folder_children(
                         'cloud_id': cid,
                         'account_id': account_id,
                         'account_name': account_name,
-                        'provider': 'google'
+                        'provider': 'google',
+                        'modified_time': mod_t
                     })
         else:
             url = (
@@ -640,6 +748,7 @@ def _fetch_cloud_folder_children(
             for f in resp.json().get('value', []):
                 name = f.get('name', '')
                 cid = f.get('id')
+                mod_t = (f.get('lastModifiedDateTime') or '')[:10]
                 is_folder = 'folder' in f
                 ext = name.rsplit('.', 1)[-1].lower() if '.' in name else ''
 
@@ -652,6 +761,7 @@ def _fetch_cloud_folder_children(
                         'account_id': account_id,
                         'account_name': account_name,
                         'provider': 'onedrive',
+                        'modified_time': mod_t,
                         'children': []
                     }
                     items.append(folder_node)
@@ -666,7 +776,8 @@ def _fetch_cloud_folder_children(
                         'cloud_id': cid,
                         'account_id': account_id,
                         'account_name': account_name,
-                        'provider': 'onedrive'
+                        'provider': 'onedrive',
+                        'modified_time': mod_t
                     })
 
         if subfolders:

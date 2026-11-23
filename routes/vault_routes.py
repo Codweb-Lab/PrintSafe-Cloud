@@ -42,7 +42,6 @@ def _resolve_cloud_upload_target(cloud_folder_id: str, account_id: str, provider
     conn = None
     try:
         conn = get_db_connection()
-        # 1. If account_id is provided, verify & infer provider
         if account_id:
             acc = conn.execute(
                 "SELECT account_id, provider FROM cloud_accounts WHERE account_id = ? AND is_enabled = 1",
@@ -53,7 +52,6 @@ def _resolve_cloud_upload_target(cloud_folder_id: str, account_id: str, provider
                 cloud_folder_id = cloud_folder_id or 'root'
                 return cloud_folder_id, account_id, provider
 
-        # 2. Match top-level mounted folder name from target_folder (e.g., "Documents/Subfolder" -> "Documents")
         root_name = (target_folder.split('/')[0] if target_folder else '').strip()
         if root_name:
             asset = conn.execute(
@@ -72,7 +70,6 @@ def _resolve_cloud_upload_target(cloud_folder_id: str, account_id: str, provider
                 if acc_id:
                     return (cloud_folder_id or asset['cloud_id'] or 'root'), acc_id, prov
 
-        # 3. Fallback to first enabled cloud account (matching provider if given)
         if provider in ('google', 'onedrive'):
             acc_row = conn.execute(
                 "SELECT account_id, provider FROM cloud_accounts WHERE provider = ? AND is_enabled = 1 LIMIT 1",
@@ -125,7 +122,6 @@ def _append_item_to_imported_assets_db(account_id: str, provider: str, target_fo
             except Exception:
                 children = []
 
-            # Walk nested subfolders if target_folder has sub-paths (e.g., "Documents/SubFolder")
             target_list = children
             matched_path = True
             for seg in segments[1:]:
@@ -141,7 +137,6 @@ def _append_item_to_imported_assets_db(account_id: str, provider: str, target_fo
             if not matched_path:
                 continue
 
-            # Replace if same name & type already exists, else append
             idx = next(
                 (i for i, c in enumerate(target_list) if c.get('name') == new_item.get('name') and c.get('type') == new_item.get('type')),
                 -1
@@ -173,20 +168,30 @@ def manage_remote_storage():
         return jsonify({"error": "Unauthorized"}), 403
 
     owner_id = session.get('user_id', 'user')
+    is_qr = session.get('login_type') == 'qr_restricted'
     conn = None
     try:
         conn = get_db_connection()
 
         if request.method == 'GET':
-            rows = conn.execute(
-                """
-                SELECT storage_id, label, protocol, host, port, username, base_path, is_enabled
-                FROM remote_storages
-                WHERE owner_id = ? OR owner_id = 'user' OR owner_id IS NULL
-                ORDER BY created_at DESC
-                """,
-                (owner_id,)
-            ).fetchall()
+            if is_qr:
+                rows = conn.execute(
+                    """
+                    SELECT storage_id, label, protocol, host, port, username, base_path, is_enabled
+                    FROM remote_storages
+                    ORDER BY created_at DESC
+                    """
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT storage_id, label, protocol, host, port, username, base_path, is_enabled
+                    FROM remote_storages
+                    WHERE owner_id = ? OR owner_id = 'user' OR owner_id IS NULL
+                    ORDER BY created_at DESC
+                    """,
+                    (owner_id,)
+                ).fetchall()
             return jsonify({"storages": [dict(r) for r in rows]})
 
         data = request.get_json(silent=True) or {}
@@ -408,104 +413,6 @@ def mount_remote_storage_asset():
             conn.close()
 
 
-def _fetch_cpanel_live_quota(host: str, username: str, password: str):
-    """Fetches exact cPanel account disk usage & total quota directly via cPanel UAPI (port 2083)."""
-    clean_host = host.replace('ftp.', '').replace('sftp.', '').strip()
-    cpanel_user = username.split('@')[0].strip() if '@' in username else username.strip()
-    if not clean_host or not cpanel_user or not password:
-        return 0, 0
-
-    for target_host in dict.fromkeys([clean_host, host]):
-        try:
-            url = f"https://{target_host}:2083/execute/Quota/get_quota_info"
-            resp = requests.get(
-                url,
-                auth=(cpanel_user, password),
-                timeout=6,
-                verify=False
-            )
-            if resp.ok:
-                payload = resp.json()
-                data = payload.get('data') or {}
-                used_mb = float(data.get('megabytes_used') or 0)
-                limit_mb = float(data.get('megabyte_limit') or 0)
-                if used_mb > 0 or limit_mb > 0:
-                    return int(used_mb * 1024 * 1024), int(limit_mb * 1024 * 1024)
-        except Exception:
-            continue
-    return 0, 0
-
-
-@vault_bp.route('/api/remote-storage/quota/<storage_id>', methods=['GET'])
-def get_remote_storage_quota(storage_id):
-    """Fetches exact remote folder bytes + cPanel UAPI / SFTP quota."""
-    if not session.get('is_authenticated'):
-        return jsonify({"error": "Unauthorized"}), 403
-
-    conn = None
-    try:
-        conn = get_db_connection()
-        row = conn.execute("SELECT * FROM remote_storages WHERE storage_id = ?", (storage_id,)).fetchone()
-        if not row:
-            return jsonify({"success": False, "error": "Storage not found"}), 404
-        rem = dict(row)
-    finally:
-        if conn:
-            conn.close()
-
-    protocol = (rem.get('protocol') or 'sftp').lower()
-    host = rem.get('host')
-    port = int(rem.get('port') or (22 if protocol == 'sftp' else 21))
-    username = rem.get('username')
-    password = decrypt_storage_password(rem['encrypted_secret'])
-    base_path = (rem.get('base_path') or '/').strip() or '/'
-
-    folder_used_bytes = 0
-    account_used_bytes = 0
-    total_bytes = 0
-
-    cp_used, cp_total = _fetch_cpanel_live_quota(host, username, password)
-    if cp_used > 0:
-        account_used_bytes = cp_used
-    if cp_total > 0:
-        total_bytes = cp_total
-
-    try:
-        folder_used_bytes, _ = get_remote_storage_usage_stats(rem)
-
-        if protocol == 'sftp' and (total_bytes == 0 or account_used_bytes == 0):
-            try:
-                t = paramiko.Transport((host, port))
-                t.connect(username=username, password=password)
-                sftp = paramiko.SFTPClient.from_transport(t)
-                try:
-                    st = sftp.statvfs(base_path)
-                    t_b = int(st.f_frsize * st.f_blocks)
-                    a_b = int(st.f_frsize * st.f_bavail)
-                    if t_b > 0 and total_bytes == 0:
-                        total_bytes = t_b
-                    if t_b > 0 and account_used_bytes == 0:
-                        account_used_bytes = max(0, t_b - a_b)
-                finally:
-                    sftp.close()
-                    t.close()
-            except Exception as sftp_err:
-                print(f"[QUOTA SFTP STATVFS WARN]: {sftp_err}")
-
-        if account_used_bytes <= 0:
-            account_used_bytes = folder_used_bytes
-
-        return jsonify({
-            "success": True,
-            "storage_id": storage_id,
-            "folder_used_bytes": folder_used_bytes,
-            "account_used_bytes": account_used_bytes,
-            "total_bytes": total_bytes
-        })
-    except Exception as e:
-        print(f"[QUOTA ENDPOINT ERROR] ({storage_id}): {e}")
-        return jsonify({"success": False, "error": str(e)}), 500    
-
 # ========================================================================
 # 🗑️ UNMOUNT MOUNTED FOLDER & UNIVERSAL PERMANENT FILE DELETION
 # ========================================================================
@@ -683,7 +590,6 @@ def upload_file_to_vault():
     ext = filename.rsplit('.', 1)[1].lower()
     file_type = "notebook" if ext == 'ipynb' else ("pdf" if ext == 'pdf' else "image")
 
-    # 1. Direct Upload to Active Hosting SFTP / FTP Folder
     if storage_id:
         conn = None
         try:
@@ -715,7 +621,6 @@ def upload_file_to_vault():
             if conn:
                 conn.close()
 
-    # 2. Direct Upload to Active Cloud Drive Folder (with automatic DB resolution fallback)
     cloud_folder_id, account_id, provider = _resolve_cloud_upload_target(
         raw_cloud_folder_id, raw_account_id, raw_provider, target_folder
     )
@@ -968,6 +873,7 @@ def fetch_vault_list():
         return jsonify({"error": "Unauthorized Access!"}), 403
 
     owner_id = session.get('user_id', 'shared')
+    is_qr = session.get('login_type') == 'qr_restricted'
     vault_tree = []
 
     user_root = os.path.join(DOCUMENTS_DIR, secure_filename(owner_id))
@@ -994,7 +900,6 @@ def fetch_vault_list():
             return sorted(res, key=lambda x: (x['type'] != 'folder', x['name'].lower()))
         vault_tree.extend(scan_user_dir(user_root))
 
-    # Build lookup of enabled/disabled SFTP/FTP servers
     enabled_sftp_ids = set()
     disabled_sftp_ids = set()
     conn_rem = None
@@ -1011,7 +916,6 @@ def fetch_vault_list():
         if conn_rem:
             conn_rem.close()
 
-    # Mounted Cloud Drive & SFTP/FTP Assets (Instant SQLite Cache-First Read)
     try:
         acc_map = {}
         disabled_providers = set()
@@ -1038,7 +942,6 @@ def fetch_vault_list():
             acc_id = row["account_id"]
             prov = (row["provider"] or "google").lower()
 
-            # Skip mounted items whose parent SFTP/FTP server is disabled
             if prov in ('sftp', 'ftp'):
                 if acc_id in disabled_sftp_ids:
                     continue
@@ -1102,13 +1005,16 @@ def fetch_vault_list():
     conn = None
     try:
         conn = get_db_connection()
-        remotes = conn.execute(
-            """
-            SELECT * FROM remote_storages
-            WHERE (owner_id = ? OR owner_id = 'user' OR owner_id IS NULL) AND is_enabled = 1
-            """,
-            (owner_id,)
-        ).fetchall()
+        if is_qr:
+            remotes = conn.execute("SELECT * FROM remote_storages WHERE is_enabled = 1").fetchall()
+        else:
+            remotes = conn.execute(
+                """
+                SELECT * FROM remote_storages
+                WHERE (owner_id = ? OR owner_id = 'user' OR owner_id IS NULL) AND is_enabled = 1
+                """,
+                (owner_id,)
+            ).fetchall()
         for rem in remotes:
             rem_dict = dict(rem)
             children = list_remote_directory(rem_dict)
@@ -1176,10 +1082,22 @@ def fetch_file_data():
             return jsonify({"error": str(e)}), 502
 
     if relative_path:
+        clean_rel = relative_path.lstrip('/')
         user_id = session.get('user_id', 'shared')
         user_root = os.path.join(DOCUMENTS_DIR, secure_filename(user_id))
-        secure_path = os.path.normpath(os.path.join(user_root, relative_path.lstrip('/')))
-        if secure_path.startswith(os.path.normpath(user_root)) and os.path.exists(secure_path):
+        secure_path = os.path.normpath(os.path.join(user_root, clean_rel))
+
+        # Fallback: search user subdirectories under DOCUMENTS_DIR in QR restricted mode
+        if not (secure_path.startswith(os.path.normpath(user_root)) and os.path.exists(secure_path)):
+            base_docs = os.path.normpath(DOCUMENTS_DIR)
+            for entry in os.scandir(base_docs):
+                if entry.is_dir():
+                    cand = os.path.normpath(os.path.join(entry.path, clean_rel))
+                    if cand.startswith(base_docs) and os.path.exists(cand):
+                        secure_path = cand
+                        break
+
+        if os.path.exists(secure_path):
             try:
                 with open(secure_path, "rb") as f:
                     dec = decrypt_bytes(f.read())
