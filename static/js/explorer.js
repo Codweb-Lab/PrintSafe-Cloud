@@ -3,6 +3,217 @@
 // ========================================================================
 let lazyFilteredItems = [];
 
+function formatFileSize(bytes) {
+  const num = Number(bytes || 0);
+  if (!num || num <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const idx = Math.min(units.length - 1, Math.floor(Math.log(num) / Math.log(1024)));
+  const val = num / Math.pow(1024, idx);
+  if (idx === 0) return `${Math.round(val)} B`;
+  return `${val.toFixed(2)} ${units[idx]}`;
+}
+window.formatFileSize = formatFileSize;
+
+function formatCombinedCapacity(bytes) {
+  const num = Number(bytes || 0);
+  if (!num || num <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const idx = Math.min(units.length - 1, Math.floor(Math.log(num) / Math.log(1024)));
+  const val = num / Math.pow(1024, idx);
+  if (idx === 0) return `${Math.round(val)} B`;
+
+  // If TB value has sub-0.01 fractional GB (e.g., 5 TB + 5 GB = 5.00488 TB), show 3 decimals cleanly
+  const twoDec = val.toFixed(2);
+  if (idx === 4 && twoDec.endsWith(".00") && val > Math.floor(val)) {
+    return `${val.toFixed(3)} ${units[idx]}`;
+  }
+  return `${twoDec} ${units[idx]}`;
+}
+window.formatCombinedCapacity = formatCombinedCapacity;
+
+function applySmartNameMarquee(rootContainer = document) {
+  requestAnimationFrame(() => {
+    rootContainer.querySelectorAll(".ps-marquee-wrap").forEach((wrap) => {
+      const track = wrap.querySelector(".ps-marquee-track");
+      if (!track) return;
+      wrap.classList.remove("is-overflowing");
+      track.style.removeProperty("--marquee-shift");
+
+      const overflowPx = track.scrollWidth - wrap.clientWidth;
+      if (overflowPx > 4) {
+        wrap.classList.add("is-overflowing");
+        track.style.setProperty("--marquee-shift", `-${overflowPx + 14}px`);
+      }
+    });
+  });
+}
+
+function isCloudlyBentoActive() {
+  return document.documentElement.getAttribute("data-style") === "cloudly";
+}
+
+function getPeekDocumentsFromFolder(item) {
+  const children = Array.isArray(item.children) ? item.children : [];
+  const docFiles = children.filter((c) => c && c.type !== "folder");
+  const first = docFiles[0] || children[0] || null;
+  const second = docFiles[1] || children[1] || null;
+
+  const getTag = (node, fallback) => {
+    if (!node) return fallback;
+    if (node.type === "folder") return "DIR";
+    const ext = (node.name || "").split(".").pop().toUpperCase();
+    return ext && ext.length <= 5 ? ext : fallback;
+  };
+
+  return {
+    backTag: getTag(second, "DOC"),
+    frontTag: getTag(first, "PDF"),
+    frontTitle: first ? first.name : item.name
+  };
+}
+
+function getFolderEdgeCloudBadgeHTML(item) {
+  const prov = (item.provider || "local").toLowerCase();
+  const accLabel =
+    item.account_name ||
+    (prov === "google" ? "Google Drive" : prov === "onedrive" ? "OneDrive" : "Vault");
+
+  let iconClass = "ri-shield-check-fill";
+  let iconColor = "var(--accent)";
+  if (prov === "google") {
+    iconClass = "ri-google-fill";
+    iconColor = "#ea4335";
+  } else if (prov === "onedrive") {
+    iconClass = "ri-microsoft-fill";
+    iconColor = "#0078d4";
+  } else if (prov === "sftp" || prov === "ftp") {
+    iconClass = "ri-server-fill";
+    iconColor = "#38bdf8";
+  }
+
+  return `
+    <span class="folder-edge-cloud-pill" title="${accLabel}">
+      <i class="${iconClass}" style="color:${iconColor};"></i>
+      <span class="ps-marquee-wrap">
+        <span class="ps-marquee-track">${accLabel}</span>
+      </span>
+    </span>`;
+}
+
+function buildFolderThumbnailHtml(item, iconClass, iconColor) {
+  const childCount = Array.isArray(item.children) ? item.children.length : 0;
+  const badgeText = childCount === 1 ? "1 item" : `${childCount} items`;
+
+  if (!isCloudlyBentoActive()) {
+    return `
+      <div class="std-theme-folder-box" aria-hidden="true">
+        <i class="ri-folder-3-fill folder-icon-closed" style="color:${iconColor};"></i>
+        <i class="ri-folder-open-fill folder-icon-open" style="color:${iconColor};"></i>
+        <span class="std-theme-folder-count">${badgeText}</span>
+      </div>`;
+  }
+
+  const peek = getPeekDocumentsFromFolder(item);
+  const fUid = `fpeek-${Math.random().toString(36).substring(2, 9)}`;
+
+  let peekDocsHtml = "";
+  if (childCount > 0) {
+    setTimeout(() => hydrateFolderPeekThumbnails(item, fUid), 30);
+    const backSheetHtml =
+      childCount > 1
+        ? `<div class="peek-doc doc-back" id="${fUid}-back"><span class="peek-doc-tag">${peek.backTag}</span></div>`
+        : "";
+    peekDocsHtml = `
+      ${backSheetHtml}
+      <div class="peek-doc doc-front" id="${fUid}-front">
+        <span class="peek-doc-tag">${peek.frontTag}</span>
+        <div class="peek-doc-line"></div>
+        <div class="peek-doc-line short"></div>
+      </div>`;
+  }
+
+  return `
+    <div class="cloudly-3d-folder" id="${fUid}" aria-hidden="true">
+      <div class="folder-back-tab"></div>
+      <div class="folder-back-body"></div>
+      ${peekDocsHtml}
+      <div class="folder-front-pocket">
+        <span class="folder-pocket-badge">${badgeText}</span>
+      </div>
+    </div>`;
+}
+
+async function hydrateFolderPeekThumbnails(folderItem, fUid) {
+  const rootEl = document.getElementById(fUid);
+  if (!rootEl || !Array.isArray(folderItem.children)) return;
+
+  const previewable = folderItem.children.filter((c) => c && c.type !== "folder").slice(0, 2);
+  if (previewable.length === 0) return;
+
+  const slots = [
+    { file: previewable[0], slotId: `${fUid}-front` },
+    { file: previewable[1], slotId: `${fUid}-back` }
+  ];
+
+  for (const { file, slotId } of slots) {
+    if (!file) continue;
+    const slotEl = document.getElementById(slotId);
+    if (!slotEl) continue;
+
+    const relPath = `${folderItem.name}/${file.name}`;
+    const cacheKey = file.remote_path || file.cloud_id || relPath;
+
+    if (thumbnailCache[cacheKey]?.status === "success") {
+      slotEl.style.padding = "0";
+      slotEl.innerHTML = `<img class="peek-thumb-img" src="${thumbnailCache[cacheKey].dataUrl}" alt="">`;
+      continue;
+    }
+
+    try {
+      const res = await fetch("/fetch-file-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          password: savedPassword,
+          filename: relPath,
+          cloud_id: file.cloud_id || null,
+          account_id: file.account_id || folderItem.account_id || null,
+          storage_id: file.storage_id || folderItem.storage_id || null,
+          remote_path: file.remote_path || null,
+          session_id: currentSessionId
+        })
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (!data.base64) continue;
+
+      if (file.file_type === "pdf") {
+        const binary = Uint8Array.from(atob(data.base64), (c) => c.charCodeAt(0));
+        const pdf = await pdfjsLib.getDocument({ data: binary.buffer }).promise;
+        const page = await pdf.getPage(1);
+        const viewport = page.getViewport({ scale: 0.28 });
+        const canvas = document.createElement("canvas");
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+        const url = canvas.toDataURL();
+        thumbnailCache[cacheKey] = { status: "success", dataUrl: url };
+        if (document.getElementById(slotId)) {
+          document.getElementById(slotId).style.padding = "0";
+          document.getElementById(slotId).innerHTML = `<img class="peek-thumb-img" src="${url}" alt="">`;
+        }
+      } else {
+        const url = `data:image/jpeg;base64,${data.base64}`;
+        thumbnailCache[cacheKey] = { status: "success", dataUrl: url };
+        if (document.getElementById(slotId)) {
+          document.getElementById(slotId).style.padding = "0";
+          document.getElementById(slotId).innerHTML = `<img class="peek-thumb-img" src="${url}" alt="">`;
+        }
+      }
+    } catch (e) {}
+  }
+}
+
 function getActiveUploadFolderContext() {
   if (!Array.isArray(currentFolderNavigation) || currentFolderNavigation.length === 0) {
     return null;
@@ -50,7 +261,6 @@ function toggleFloatingUploadMenu(e) {
   let menu = document.getElementById("floating-upload-menu");
   if (!fab || !menu) return;
 
-  // Move menu to document.body once so parent overflow/transform never clips it
   if (menu.parentElement !== document.body) {
     document.body.appendChild(menu);
   }
@@ -96,7 +306,6 @@ function triggerDocScannerFromFab() {
   }
 }
 
-// Capture click even if cloud_admin.js overwrites onclick on #floating-upload-fab
 document.addEventListener(
   "click",
   (e) => {
@@ -215,6 +424,15 @@ async function togglePrintQueueItem(e, item, relativePath) {
 }
 
 function openPrintQueueView() {
+  window.activeWorkspaceTab = "explorer";
+  const dashView = document.getElementById("cloudly-dashboard-view");
+  const explorerView = document.getElementById("file-manager-dashboard");
+  if (dashView) dashView.style.display = "none";
+  if (explorerView) explorerView.style.display = "flex";
+
+  document.querySelectorAll(".rail-btn").forEach((b) => b.classList.remove("active"));
+  document.getElementById("nav-print-queue-btn")?.classList.add("active");
+
   const pill = document.getElementById("pill-print-queue");
   applyQuickTypeFilter("print_queue", pill);
 }
@@ -249,6 +467,7 @@ function renderCurrentFolderLevel() {
   const searchQuery = (document.getElementById("drive-search-input")?.value || "").toLowerCase().trim();
   const typeFilter = currentFilterType;
   const sortBy = document.getElementById("drive-sort-by")?.value || "name-asc";
+  const cloudlyMode = isCloudlyBentoActive();
 
   let currentItems = [];
   let pathStrings = ["Root Vault"];
@@ -353,7 +572,15 @@ function renderCurrentFolderLevel() {
       const isFolder = item.type === "folder";
       const displayName = isFolder ? getDisplayFolderName(item.name) : item.name;
       const iconClass = isFolder ? "ri-folder-3-fill" : item.file_type === "pdf" ? "ri-file-pdf-2-fill" : "ri-image-2-fill";
-      const iconColor = item.is_expired ? "#94a3b8" : isFolder ? "#f59e0b" : item.file_type === "pdf" ? "#ef4444" : "#3b82f6";
+      const iconColor = item.is_expired
+        ? "#94a3b8"
+        : isFolder
+        ? cloudlyMode
+          ? "#FF8132"
+          : "#f59e0b"
+        : item.file_type === "pdf"
+        ? "#ef4444"
+        : "#3b82f6";
       const thumbId = `list-thumb-${Math.random().toString(36).substring(2, 8)}`;
       const relativeFilePath =
         item.item_path || (currentFolderNavigation.length > 0 ? currentFolderNavigation.join("/") + "/" + item.name : item.name);
@@ -392,39 +619,59 @@ function renderCurrentFolderLevel() {
     grid.className = "file-grid";
     [...folders, ...files].forEach((item) => {
       const card = document.createElement("div");
-      card.className = `file-card ${item.is_expired ? "expired-card" : ""}`;
       const isFolder = item.type === "folder";
+      card.className = `file-card ${isFolder ? "is-folder-card" : ""} ${item.is_expired ? "expired-card" : ""}`;
       const displayName = isFolder ? getDisplayFolderName(item.name) : item.name;
       const iconClass = isFolder ? "ri-folder-3-fill" : item.file_type === "pdf" ? "ri-file-pdf-2-fill" : "ri-image-2-fill";
-      const iconColor = item.is_expired ? "#94a3b8" : isFolder ? "#f59e0b" : item.file_type === "pdf" ? "#ef4444" : "#3b82f6";
+      const iconColor = item.is_expired
+        ? "#94a3b8"
+        : isFolder
+        ? cloudlyMode
+          ? "#FF8132"
+          : "#f59e0b"
+        : item.file_type === "pdf"
+        ? "#ef4444"
+        : "#3b82f6";
       const thumbId = `thumb-${Math.random().toString(36).substring(2, 9)}`;
       const relativeFilePath =
         item.item_path || (currentFolderNavigation.length > 0 ? currentFolderNavigation.join("/") + "/" + item.name : item.name);
       const inQueue = !isFolder && isItemInPrintQueue(relativeFilePath);
 
-      card.innerHTML = `
-        <div class="file-thumbnail-zone" id="${thumbId}" style="position:relative;${isFolder ? "background:rgba(245,158,11,0.08);" : ""}">
-          ${isFolder
-            ? `<i class="${iconClass}" style="font-size:46px;color:${iconColor};"></i>`
-            : `<div class="vault-spinner"></div>`
-          }
-          ${!isFolder ? `
+      if (isFolder) {
+        card.innerHTML = `
+          <div class="file-thumbnail-zone" id="${thumbId}" style="position:relative;height:104px;margin-bottom:10px;">
+            ${buildFolderThumbnailHtml(item, iconClass, iconColor)}
+            ${getFolderEdgeCloudBadgeHTML(item)}
+          </div>
+          <div class="file-info" style="flex-direction:column;align-items:center;text-align:center;gap:3px;">
+            <span class="ps-marquee-wrap" title="${displayName}" style="width:100%;">
+              <span class="ps-marquee-track" style="font-weight:700;font-size:13.5px;color:var(--text-title);">${displayName}</span>
+            </span>
+            ${item.is_expired ? `<span style="font-size:10.5px;color:#ef4444;font-weight:700;">Session Expired · Reconnect</span>` : ""}
+          </div>
+        `;
+      } else {
+        card.innerHTML = `
+          <div class="file-thumbnail-zone" id="${thumbId}" style="position:relative;">
+            <div class="vault-spinner"></div>
             <button class="queue-star-btn floating ${inQueue ? "active" : ""}" title="${inQueue ? "In To Be Printed Queue" : "Add to To Be Printed"}">
               <i class="${inQueue ? "ri-printer-fill" : "ri-printer-line"}"></i>
             </button>
-          ` : ""}
-        </div>
-        <div class="file-info" style="flex-direction:column;align-items:flex-start;gap:5px;">
-          <div style="display:flex;align-items:center;gap:6px;width:100%;">
-            <i class="${iconClass}" style="color:${iconColor};font-size:15px;flex-shrink:0;"></i>
-            <span class="file-name" title="${displayName}" style="flex:1;">${displayName}</span>
           </div>
-          <div style="display:flex;align-items:center;justify-content:space-between;width:100%;">
-            ${getProviderBadgeHTML(item)}
-            <span style="font-size:10px;color:var(--text-sub);">${item.is_expired ? "Reconnect" : isFolder ? `${(item.children || []).length}` : formatFileSize(item.size)}</span>
+          <div class="file-info" style="flex-direction:column;align-items:flex-start;gap:5px;">
+            <div style="display:flex;align-items:center;gap:6px;width:100%;">
+              <i class="${iconClass}" style="color:${iconColor};font-size:15px;flex-shrink:0;"></i>
+              <span class="ps-marquee-wrap" title="${displayName}" style="flex:1;min-width:0;">
+                <span class="ps-marquee-track" style="font-weight:700;">${displayName}</span>
+              </span>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;width:100%;">
+              ${getProviderBadgeHTML(item)}
+              <span style="font-size:10.5px;color:var(--text-sub);font-weight:600;">${formatFileSize(item.size)}</span>
+            </div>
           </div>
-        </div>
-      `;
+        `;
+      }
 
       const qBtn = card.querySelector(".queue-star-btn");
       if (qBtn) qBtn.onclick = (ev) => togglePrintQueueItem(ev, item, relativeFilePath);
@@ -437,6 +684,7 @@ function renderCurrentFolderLevel() {
       }
       grid.appendChild(card);
     });
+    applySmartNameMarquee(grid);
   }
 }
 
@@ -461,17 +709,27 @@ function getProviderBadgeHTML(item) {
 }
 
 function filterVaultByAccount(provider, accountId = null, el = null) {
+  window.activeWorkspaceTab = "explorer";
+  const dashView = document.getElementById("cloudly-dashboard-view");
+  const explorerView = document.getElementById("file-manager-dashboard");
+  if (dashView) dashView.style.display = "none";
+  if (explorerView) explorerView.style.display = "flex";
+
   window.activeProviderFilter = provider || "all";
   window.activeAccountFilterId = accountId || null;
   currentFilterType = "all";
   currentFolderNavigation = [];
 
-  document.querySelectorAll(".sidebar-nav-item").forEach((b) => b.classList.remove("active"));
+  document.querySelectorAll(".rail-btn, .sidebar-nav-item").forEach((b) => b.classList.remove("active"));
   if (provider === "all") {
     document.getElementById("nav-all-vault-btn")?.classList.add("active");
   } else if (el) {
-    el.closest(".sidebar-nav-item")?.classList.add("active");
+    el.closest(".rail-btn, .sidebar-nav-item")?.classList.add("active");
   }
+
+  document.querySelectorAll(".quick-filter-pills-bar .filter-pill").forEach((p, idx) => {
+    p.classList.toggle("active", idx === 0);
+  });
 
   updateCloudSummaryBadges();
   renderCurrentFolderLevel();
@@ -974,3 +1232,372 @@ async function handleCurrentFolderUpload(event) {
   event.target.value = "";
   renderCurrentFolderLevel();
 }
+
+// ========================================================================
+// 📊 MODULAR DASHBOARD OVERVIEW CONTROLLER
+// ========================================================================
+function openDashboardOverview() {
+  window.activeWorkspaceTab = "dashboard";
+  const dashView = document.getElementById("cloudly-dashboard-view");
+  const explorerView = document.getElementById("file-manager-dashboard");
+  if (dashView) dashView.style.display = "grid";
+  if (explorerView) explorerView.style.display = "none";
+
+  document.querySelectorAll(".rail-btn").forEach((b) => b.classList.remove("active"));
+  document.getElementById("nav-dashboard-btn")?.classList.add("active");
+
+  if (typeof updateUploadButtonVisibility === "function") {
+    updateUploadButtonVisibility();
+  }
+  if (typeof applyLiveRestrictionsUI === "function") {
+    applyLiveRestrictionsUI();
+  }
+  renderCloudlyDashboardOverview();
+}
+window.openDashboardOverview = openDashboardOverview;
+
+function switchToVaultExplorerFromDash(providerFilter = "all") {
+  filterVaultByAccount(providerFilter, null, document.getElementById("nav-all-vault-btn"));
+}
+window.switchToVaultExplorerFromDash = switchToVaultExplorerFromDash;
+
+function openPrintQueueFromDash() {
+  openPrintQueueView();
+}
+window.openPrintQueueFromDash = openPrintQueueFromDash;
+
+function openDashCreateFolderPrompt() {
+  switchToVaultExplorerFromDash("all");
+  showToast("Open any mounted drive folder and click Upload / New Folder.", "info");
+}
+
+function renderCloudlyDashboardOverview() {
+  const userName = (document.getElementById("dropdown-user-name")?.innerText || "User").trim();
+  const headingEl = document.getElementById("dash-welcome-heading");
+  if (headingEl) {
+    headingEl.innerText = `Welcome Back${userName && userName !== "User" ? `, ${userName}` : ""}!`;
+  }
+
+  const allFolders = [];
+  const allFiles = [];
+  let sftpUsedBytes = 0;
+  let localUsedBytes = 0;
+
+  function walkNodes(nodes, parentPath = "") {
+    (nodes || []).forEach((node) => {
+      if (!node) return;
+      const curPath = parentPath ? `${parentPath}/${node.name}` : node.name;
+      const prov = (node.provider || "local").toLowerCase();
+      if (node.type === "folder") {
+        allFolders.push({ ...node, _relPath: curPath });
+        walkNodes(node.children || [], curPath);
+      } else {
+        const sz = Number(node.size || 0);
+        allFiles.push({ ...node, _relPath: node.item_path || curPath });
+        if (prov === "sftp" || prov === "ftp") sftpUsedBytes += sz;
+        else if (prov === "local") localUsedBytes += sz;
+      }
+    });
+  }
+  walkNodes(globalVaultTree || []);
+
+  // Aggregate combined storage per provider across ALL connected accounts
+  const gAccs = (connectedAccountsList || []).filter((a) => a.provider === "google" && a.is_enabled !== false);
+  const oAccs = (connectedAccountsList || []).filter((a) => a.provider === "onedrive" && a.is_enabled !== false);
+  const sServs = (connectedRemoteStoragesList || []).filter((s) => s.is_enabled !== false);
+
+  const gUsed = gAccs.reduce((sum, a) => sum + Number(a.used_bytes || 0), 0);
+  const gTotal = gAccs.reduce((sum, a) => sum + Number(a.total_bytes || 0), 0);
+  const oUsed = oAccs.reduce((sum, a) => sum + Number(a.used_bytes || 0), 0);
+  const oTotal = oAccs.reduce((sum, a) => sum + Number(a.total_bytes || 0), 0);
+
+  const gFilesCount = allFiles.filter((f) => (f.provider || "").toLowerCase() === "google").length;
+  const oFilesCount = allFiles.filter((f) => (f.provider || "").toLowerCase() === "onedrive").length;
+  const sFilesCount = allFiles.filter((f) => ["sftp", "ftp"].includes((f.provider || "").toLowerCase())).length;
+
+  // 1. Render Cloud-Wise Combined Usage / Total Cards
+  const statsGrid = document.getElementById("dash-provider-cards");
+  if (statsGrid) {
+    const gPct = gTotal > 0 ? Math.min(100, Math.round((gUsed / gTotal) * 100)) : 0;
+    const oPct = oTotal > 0 ? Math.min(100, Math.round((oUsed / oTotal) * 100)) : 0;
+    const pqCount = (printQueueItems || []).length;
+
+    const cards = [
+      {
+        title: "Google Drive",
+        icon: "ri-google-fill",
+        color: "#7CA1FF",
+        count: `${gFilesCount} Mounted Files`,
+        sub: `${gAccs.length} ${gAccs.length === 1 ? "Account" : "Accounts"}`,
+        usedStr: formatFileSize(gUsed),
+        totalStr: gTotal > 0 ? formatFileSize(gTotal) : "∞",
+        pct: gPct,
+        onView: `switchToVaultExplorerFromDash('google')`
+      },
+      {
+        title: "OneDrive",
+        icon: "ri-microsoft-fill",
+        color: "#FF7DA0",
+        count: `${oFilesCount} Mounted Files`,
+        sub: `${oAccs.length} ${oAccs.length === 1 ? "Account" : "Accounts"}`,
+        usedStr: formatFileSize(oUsed),
+        totalStr: oTotal > 0 ? formatFileSize(oTotal) : "∞",
+        pct: oPct,
+        onView: `switchToVaultExplorerFromDash('onedrive')`
+      },
+      {
+        title: "Hosting (SFTP/FTP)",
+        icon: "ri-server-fill",
+        color: "#9878DD",
+        count: `${sFilesCount} Files`,
+        sub: `${sServs.length} ${sServs.length === 1 ? "Server" : "Servers"}`,
+        usedStr: formatFileSize(sftpUsedBytes),
+        totalStr: "Hosting",
+        pct: sftpUsedBytes > 0 ? 35 : 0,
+        onView: `switchToVaultExplorerFromDash('sftp')`
+      },
+      {
+        title: "To Be Printed",
+        icon: "ri-printer-cloud-fill",
+        color: "#FF8132",
+        count: `${pqCount} Queued`,
+        sub: "Print Wishlist",
+        usedStr: `${pqCount} ready`,
+        totalStr: "Queue",
+        pct: pqCount > 0 ? Math.min(100, pqCount * 15) : 0,
+        onView: `openPrintQueueFromDash()`
+      }
+    ];
+
+    statsGrid.innerHTML = cards
+      .map(
+        (c) => `
+      <div class="ps-stat-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div class="ps-stat-icon" style="color:${c.color};"><i class="${c.icon}"></i></div>
+          <span style="font-size:11px;font-weight:700;color:var(--text-sub);">${c.sub}</span>
+        </div>
+        <div>
+          <div style="font-size:12px;color:var(--text-sub);font-weight:600;">${c.title}</div>
+          <div style="font-size:17px;font-weight:800;color:var(--text-title);margin-top:2px;">${c.count}</div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:700;color:var(--text-sub);">
+          <span>${c.usedStr}</span>
+          <span>${c.totalStr}</span>
+        </div>
+        <div class="ps-stat-progress"><span style="width:${c.pct}%;background:${c.color};"></span></div>
+        <div class="ps-stat-footer" onclick="${c.onView}">
+          <span>View</span>
+          <i class="ri-arrow-right-line"></i>
+        </div>
+      </div>`
+      )
+      .join("");
+  }
+
+  // 2. Render Mounted Folders (Theme-Aware + Bottom-Right Cloud Pill + Marquee Name Scroll)
+  const foldersGrid = document.getElementById("dash-folders-grid");
+  const cloudlyMode = isCloudlyBentoActive();
+  if (foldersGrid) {
+    const topFolders = (globalVaultTree || []).filter((n) => n.type === "folder").slice(0, 6);
+    foldersGrid.innerHTML = topFolders.length
+      ? topFolders
+          .map((f) => {
+            const folderIconCol = cloudlyMode ? "#FF8132" : "#f59e0b";
+            const dName = getDisplayFolderName(f.name);
+            return `
+            <div class="ps-dash-folder-card" onclick="openDashFolderInExplorer('${f.name.replace(/'/g, "\\'")}')">
+              <div class="ps-dash-folder-thumbnail" style="position:relative;height:104px;display:flex;align-items:center;justify-content:center;margin-bottom:4px;">
+                ${buildFolderThumbnailHtml(f, "ri-folder-3-fill", folderIconCol)}
+                ${getFolderEdgeCloudBadgeHTML(f)}
+              </div>
+              <span class="ps-marquee-wrap" title="${dName}" style="font-weight:700;font-size:13.5px;color:var(--text-title);width:100%;">
+                <span class="ps-marquee-track">${dName}</span>
+              </span>
+            </div>`;
+          })
+          .join("")
+      : `<div style="grid-column:1/-1;text-align:center;padding:24px;color:var(--text-sub);font-size:13px;">No mounted folders yet.</div>`;
+    applySmartNameMarquee(foldersGrid);
+  }
+
+  // 3. Render "Recent" Compact Grid (Folders & Files with Date and Time + Marquee)
+  const recentGrid = document.getElementById("dash-recent-grid");
+  if (recentGrid) {
+    const nowLabel = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+    const recentItems = [
+      ...allFolders.slice(0, 4).map((d) => ({ ...d, _isDir: true })),
+      ...allFiles.slice(0, 8).map((f) => ({ ...f, _isDir: false }))
+    ].slice(0, 8);
+
+    recentGrid.innerHTML = recentItems.length
+      ? recentItems
+          .map((item) => {
+            const isDir = item._isDir;
+            const icon = isDir
+              ? "ri-folder-3-fill"
+              : item.file_type === "pdf"
+              ? "ri-file-pdf-2-fill"
+              : "ri-image-2-fill";
+            const col = isDir
+              ? cloudlyMode
+                ? "#FF8132"
+                : "#f59e0b"
+              : item.file_type === "pdf"
+              ? "#FF8132"
+              : "#7CA1FF";
+            const dateText = item.modified_time || item.created_at || nowLabel;
+            const sizeText = isDir ? `${(item.children || []).length} items` : formatFileSize(item.size || 0);
+            const titleLabel = isDir ? getDisplayFolderName(item.name) : item.name;
+            const clickAttr = isDir
+              ? `openDashFolderInExplorer('${item.name.replace(/'/g, "\\'")}')`
+              : `openDashFilePreview('${item._relPath.replace(/'/g, "\\'")}', '${item.file_type}', '${item.cloud_id || ""}', '${item.account_id || ""}', '${(item.account_name || "Vault").replace(/'/g, "\\'")}', '${item.provider || "local"}', '${item.storage_id || ""}', '${item.remote_path || ""}')`;
+
+            return `
+            <div class="ps-recent-card" onclick="${clickAttr}">
+              <div class="ps-recent-icon-box" style="color:${col};">
+                <i class="${icon}"></i>
+              </div>
+              <div class="ps-recent-meta">
+                <span class="ps-marquee-wrap ps-recent-title" title="${titleLabel}">
+                  <span class="ps-marquee-track">${titleLabel}</span>
+                </span>
+                <div class="ps-recent-sub">
+                  <span>${sizeText}</span>
+                  <span>•</span>
+                  <span>${dateText}</span>
+                </div>
+              </div>
+            </div>`;
+          })
+          .join("")
+      : `<div style="grid-column:1/-1;text-align:center;padding:24px;color:var(--text-sub);font-size:13px;">No recent folders or files yet.</div>`;
+    applySmartNameMarquee(recentGrid);
+  }
+
+  // 4. Update Combined Storage Donut Chart
+  const combinedUsed = gUsed + oUsed + sftpUsedBytes + localUsedBytes;
+  const combinedTotal = gTotal + oTotal;
+  const totalItemsPill = document.getElementById("dash-total-items-pill");
+  const totalUsedEl = document.getElementById("dash-donut-total-used");
+  const totalCapEl = document.getElementById("dash-donut-total-cap");
+  if (totalItemsPill) totalItemsPill.innerText = `${allFiles.length + allFolders.length} Items`;
+  if (totalUsedEl) totalUsedEl.innerText = formatFileSize(combinedUsed);
+  if (totalCapEl) {
+  totalCapEl.innerText = combinedTotal > 0 ? `of ${formatCombinedCapacity(combinedTotal)}` : `${allFiles.length} Files`;
+}
+
+  const C = 427;
+  const denom = Math.max(1, combinedUsed);
+  const segs = [
+    { id: "donut-seg-google", val: gUsed },
+    { id: "donut-seg-onedrive", val: oUsed },
+    { id: "donut-seg-sftp", val: sftpUsedBytes },
+    { id: "donut-seg-local", val: localUsedBytes }
+  ];
+  let offset = 0;
+  segs.forEach((s) => {
+    const el = document.getElementById(s.id);
+    const len = (s.val / denom) * C;
+    if (el) {
+      el.setAttribute("stroke-dasharray", `${len.toFixed(1)} ${C}`);
+      el.setAttribute("stroke-dashoffset", `${(-offset).toFixed(1)}`);
+    }
+    offset += len;
+  });
+
+  const bdList = document.getElementById("dash-breakdown-list");
+  if (bdList) {
+    const rows = [
+      { label: "Google Drive", color: "#7CA1FF", used: formatFileSize(gUsed), cap: gTotal > 0 ? formatFileSize(gTotal) : "∞" },
+      { label: "OneDrive", color: "#FF7DA0", used: formatFileSize(oUsed), cap: oTotal > 0 ? formatFileSize(oTotal) : "∞" },
+      { label: "Hosting (SFTP/FTP)", color: "#9878DD", used: formatFileSize(sftpUsedBytes), cap: "Mounted" },
+      { label: "Local Vault", color: "#FF8132", used: formatFileSize(localUsedBytes), cap: "Encrypted" }
+    ];
+    bdList.innerHTML = rows
+      .map(
+        (r) => `
+      <div class="ps-bd-row">
+        <div style="display:flex;align-items:center;font-weight:600;color:var(--text-title);">
+          <span class="ps-bd-dot" style="background:${r.color};"></span>${r.label}
+        </div>
+        <div style="color:var(--text-sub);font-weight:600;"><b style="color:var(--text-title);">${r.used}</b> / ${r.cap}</div>
+      </div>`
+      )
+      .join("");
+  }
+
+  const connSum = document.getElementById("dash-connected-drives-summary");
+  if (connSum) {
+    const totalLinked = (connectedAccountsList || []).length + (connectedRemoteStoragesList || []).length;
+    connSum.innerText = `${totalLinked} Cloud & Hosting Storages Linked`;
+  }
+}
+
+function openDashFolderInExplorer(folderName) {
+  switchToVaultExplorerFromDash("all");
+  currentFolderNavigation = [folderName];
+  renderCurrentFolderLevel();
+}
+
+function openDashFilePreview(relPath, fileType, cloudId, accountId, accountName, provider, storageId, remotePath) {
+  switchToVaultExplorerFromDash("all");
+  if (typeof showIntegratedPreview === "function") {
+    showIntegratedPreview(
+      relPath,
+      fileType,
+      null,
+      "",
+      cloudId || null,
+      accountId || null,
+      accountName,
+      provider,
+      storageId || null,
+      remotePath || null
+    );
+  }
+}
+
+// ========================================================================
+// 🎨 INSTANT LIVE RE-RENDER ON STYLE / THEME CHANGE (DASHBOARD + EXPLORER)
+// ========================================================================
+(function bindInstantThemeReRenderer() {
+  const rerenderActiveWorkspace = () => {
+    requestAnimationFrame(() => {
+      const dashView = document.getElementById("cloudly-dashboard-view");
+      const isDashVisible =
+        window.activeWorkspaceTab === "dashboard" ||
+        (dashView && getComputedStyle(dashView).display !== "none");
+
+      if (isDashVisible && typeof renderCloudlyDashboardOverview === "function") {
+        renderCloudlyDashboardOverview();
+      }
+      if (typeof renderCurrentFolderLevel === "function") {
+        renderCurrentFolderLevel();
+      }
+    });
+  };
+
+  if (typeof window.selectModernUIStyle === "function" && !window.selectModernUIStyle._psWrapped) {
+    const origSelectStyle = window.selectModernUIStyle;
+    window.selectModernUIStyle = function (...args) {
+      const res = origSelectStyle.apply(this, args);
+      rerenderActiveWorkspace();
+      return res;
+    };
+    window.selectModernUIStyle._psWrapped = true;
+  }
+
+  const htmlObserver = new MutationObserver((mutations) => {
+    for (const m of mutations) {
+      if (m.type === "attributes" && (m.attributeName === "data-style" || m.attributeName === "data-theme")) {
+        rerenderActiveWorkspace();
+        break;
+      }
+    }
+  });
+  htmlObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-style", "data-theme"]
+  });
+})();

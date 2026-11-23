@@ -9,6 +9,14 @@ let accountFormState = { mode: "add", provider: "google", accountId: "" };
 let pendingDeleteAccountId = null;
 let editingRemoteStorageId = null;
 let connectedRemoteStoragesList = [];
+window.activeWorkspaceTab = window.activeWorkspaceTab || "dashboard";
+
+function isQrRestrictedSession() {
+  return (
+    (typeof sessionLoginType !== "undefined" && sessionLoginType === "qr_restricted") ||
+    Boolean(typeof activeRestrictions !== "undefined" && activeRestrictions && activeRestrictions.is_restricted)
+  );
+}
 
 function setSidebarCloudLoadingState(isLoading) {
   ["google", "onedrive", "sftp"].forEach((provider) => {
@@ -37,10 +45,11 @@ function updateUploadButtonVisibility() {
   const label = document.getElementById("floating-upload-label");
   if (!fab) return;
 
-  const isRestricted = typeof sessionLoginType !== "undefined" && sessionLoginType === "qr_restricted";
+  const isRestricted = isQrRestrictedSession();
+  const isDashboardView = window.activeWorkspaceTab === "dashboard";
   const folderCtx = getActiveUploadFolderContext();
 
-  if (!isRestricted && folderCtx && !folderCtx.is_expired) {
+  if (!isRestricted && !isDashboardView && folderCtx && !folderCtx.is_expired) {
     fab.style.display = "inline-flex";
     if (label) {
       label.textContent = `Upload to ${folderCtx.name}`;
@@ -58,10 +67,112 @@ function getCloudAccountDisplayLabel(acc) {
   return (acc.email || acc.account_id || "Connected Drive").trim();
 }
 
+function updateCombinedSidebarStorageBar() {
+  const accs = Array.isArray(connectedAccountsList) ? connectedAccountsList : [];
+  let totalUsed = 0;
+  let totalCap = 0;
+  accs.forEach((a) => {
+    if (a.is_enabled !== false) {
+      totalUsed += Number(a.used_bytes || 0);
+      totalCap += Number(a.total_bytes || 0);
+    }
+  });
+
+  const pct = totalCap > 0 ? Math.min(100, Math.round((totalUsed / totalCap) * 100)) : 0;
+  const pctEl = document.getElementById("sidebar-combined-quota-pct");
+  const fillEl = document.getElementById("sidebar-combined-quota-fill");
+  const textEl = document.getElementById("sidebar-combined-quota-text");
+
+  if (pctEl) pctEl.innerText = `${pct}%`;
+  if (fillEl) fillEl.style.width = `${pct}%`;
+  if (textEl) {
+    const usedStr = typeof formatFileSize === "function" ? formatFileSize(totalUsed) : `${totalUsed} B`;
+    const capStr =
+  totalCap > 0 && typeof formatCombinedCapacity === "function"
+    ? formatCombinedCapacity(totalCap)
+    : totalCap > 0 && typeof formatFileSize === "function"
+    ? formatFileSize(totalCap)
+    : "∞";
+    textEl.innerText = `${usedStr} / ${capStr}`;
+  }
+}
+window.updateCombinedSidebarStorageBar = updateCombinedSidebarStorageBar;
+
 // ========================================================================
 // 🚀 DASHBOARD BOOTSTRAP & USER HEADER HYDRATION (INSTANT <200ms BOOT)
 // ========================================================================
 const cloudPickerDirCache = {}; // Instant RAM cache for right-side cloud explorer
+
+function hydrateHeaderUserIdentity(sess) {
+  let cachedProfile = null;
+  try {
+    cachedProfile = JSON.parse(sessionStorage.getItem("ps_cached_user_profile") || "null");
+  } catch (e) {}
+
+  const rawName = (sess?.user_name || sess?.full_name || sess?.name || "").trim();
+  const rawEmail = (sess?.user_email || sess?.email || "").trim();
+
+  const isPlaceholder =
+    (!rawName || rawName.toLowerCase() === "user") &&
+    (!rawEmail || rawEmail.toLowerCase() === "user@printsafe.cloud");
+
+  const displayName = !isPlaceholder
+    ? (rawName || rawEmail || cachedProfile?.name || "User")
+    : (cachedProfile?.name || rawName || "User");
+
+  const displayEmail = !isPlaceholder
+    ? (rawEmail || cachedProfile?.email || "user@printsafe.cloud")
+    : (cachedProfile?.email || rawEmail || "user@printsafe.cloud");
+
+  if (!isPlaceholder && (rawName || rawEmail)) {
+    try {
+      sessionStorage.setItem("ps_cached_user_profile", JSON.stringify({ name: displayName, email: displayEmail }));
+    } catch (e) {}
+  }
+
+  const nameEl = document.getElementById("dropdown-user-name");
+  const emailEl = document.getElementById("dropdown-user-email");
+  const avatarEl = document.getElementById("header-user-avatar");
+
+  if (nameEl) nameEl.innerText = displayName;
+  if (emailEl) emailEl.innerText = displayEmail;
+  if (avatarEl) {
+    const initialSource = (rawName && rawName.toLowerCase() !== "user" ? rawName : displayName).trim();
+    avatarEl.innerText = (initialSource || "U").charAt(0).toUpperCase();
+  }
+}
+
+function expandAllSidebarDriveDrawersInQrMode() {
+  if (!isQrRestrictedSession()) return;
+  ["google", "onedrive", "sftp"].forEach((provider) => {
+    const listEl = document.getElementById(`sidebar-accounts-${provider}`);
+    const arrowEl = document.getElementById(`sidebar-arrow-${provider}`);
+    if (listEl) {
+      listEl.classList.add("expanded");
+    }
+    if (arrowEl) {
+      arrowEl.className = "ri-arrow-up-s-line";
+    }
+  });
+}
+
+function applyActiveWorkspaceContainerVisibility() {
+  const dashBox = document.getElementById("file-manager-dashboard");
+  const overviewBox = document.getElementById("cloudly-dashboard-view");
+  const dashNavBtn = document.getElementById("nav-dashboard-btn");
+  const allVaultBtn = document.getElementById("nav-all-vault-btn");
+
+  if (window.activeWorkspaceTab === "dashboard") {
+    if (dashBox) dashBox.style.display = "none";
+    if (overviewBox) overviewBox.style.display = "grid";
+    if (dashNavBtn) dashNavBtn.classList.add("active");
+    if (allVaultBtn) allVaultBtn.classList.remove("active");
+  } else {
+    if (overviewBox) overviewBox.style.display = "none";
+    if (dashBox) dashBox.style.display = "flex";
+    if (dashNavBtn) dashNavBtn.classList.remove("active");
+  }
+}
 
 async function bootAuthenticatedDashboard() {
   try {
@@ -70,6 +181,7 @@ async function bootAuthenticatedDashboard() {
       const cachedTreeRaw = sessionStorage.getItem("ps_cached_vault_tree");
       const cachedAccsRaw = sessionStorage.getItem("ps_cached_cloud_accounts");
       const cachedSftpRaw = sessionStorage.getItem("ps_cached_sftp_storages");
+      hydrateHeaderUserIdentity({});
       if (cachedAccsRaw) {
         connectedAccountsList = JSON.parse(cachedAccsRaw) || [];
         updateCloudSummaryBadges();
@@ -81,7 +193,11 @@ async function bootAuthenticatedDashboard() {
       }
       if (cachedTreeRaw) {
         globalVaultTree = JSON.parse(cachedTreeRaw) || [];
-        setExplorerViewMode(currentViewMode);
+        if (window.activeWorkspaceTab === "dashboard" && typeof renderCloudlyDashboardOverview === "function") {
+          renderCloudlyDashboardOverview();
+        } else {
+          setExplorerViewMode(currentViewMode);
+        }
       }
     } catch (e) {}
 
@@ -98,18 +214,13 @@ async function bootAuthenticatedDashboard() {
 
     if (typeof sess.latest_event_id === "number") lastSeenSyncEventId = sess.latest_event_id;
     if (sess.restrictions) activeRestrictions = sess.restrictions;
+    if (sess.login_type) sessionLoginType = sess.login_type;
     applyFeatureFlagsToUserUI(sess.features || {});
-
-    const displayName = (sess.user_name || sess.user_email || "User").trim();
-    const displayEmail = (sess.user_email || "user@printsafe.cloud").trim();
-    if (document.getElementById("dropdown-user-name")) document.getElementById("dropdown-user-name").innerText = displayName;
-    if (document.getElementById("dropdown-user-email")) document.getElementById("dropdown-user-email").innerText = displayEmail;
-    if (document.getElementById("header-user-avatar")) document.getElementById("header-user-avatar").innerText = displayName.charAt(0).toUpperCase();
+    hydrateHeaderUserIdentity(sess);
 
     const authBox = document.getElementById("auth-container");
-    const dashBox = document.getElementById("file-manager-dashboard");
     if (authBox) authBox.style.display = "none";
-    if (dashBox) dashBox.style.display = "flex";
+    applyActiveWorkspaceContainerVisibility();
 
     applyLiveRestrictionsUI();
     initializeMobileScannerFeatures();
@@ -135,9 +246,13 @@ async function bootAuthenticatedDashboard() {
     // Parallel fast local-DB fetch + non-blocking background cloud delta sync
     Promise.allSettled([
       loadPrintQueue(),
-      Promise.all([loadConnectedCloudAccounts(), loadConnectedRemoteStorages()]).finally(() =>
-        setSidebarCloudLoadingState(false)
-      ),
+      Promise.all([loadConnectedCloudAccounts(), loadConnectedRemoteStorages()]).finally(() => {
+        setSidebarCloudLoadingState(false);
+        expandAllSidebarDriveDrawersInQrMode();
+        if (window.activeWorkspaceTab === "dashboard" && typeof renderCloudlyDashboardOverview === "function") {
+          renderCloudlyDashboardOverview();
+        }
+      }),
       refreshConnectedSessionsCount(),
       fetch("/fetch-vault-list", {
         method: "POST",
@@ -149,7 +264,12 @@ async function bootAuthenticatedDashboard() {
           if (data && Array.isArray(data.tree)) {
             globalVaultTree = data.tree;
             try { sessionStorage.setItem("ps_cached_vault_tree", JSON.stringify(globalVaultTree)); } catch (e) {}
-            setExplorerViewMode(currentViewMode);
+            applyActiveWorkspaceContainerVisibility();
+            if (window.activeWorkspaceTab === "dashboard" && typeof renderCloudlyDashboardOverview === "function") {
+              renderCloudlyDashboardOverview();
+            } else {
+              setExplorerViewMode(currentViewMode);
+            }
           }
         })
     ]).then(() => {
@@ -168,7 +288,12 @@ async function bootAuthenticatedDashboard() {
                 if (freshData && Array.isArray(freshData.tree)) {
                   globalVaultTree = freshData.tree;
                   try { sessionStorage.setItem("ps_cached_vault_tree", JSON.stringify(globalVaultTree)); } catch (e) {}
-                  renderCurrentFolderLevel();
+                  applyActiveWorkspaceContainerVisibility();
+                  if (window.activeWorkspaceTab === "dashboard" && typeof renderCloudlyDashboardOverview === "function") {
+                    renderCloudlyDashboardOverview();
+                  } else {
+                    renderCurrentFolderLevel();
+                  }
                 }
               });
           }
@@ -200,11 +325,28 @@ function applyFeatureFlagsToUserUI(features) {
 }
 
 function applyLiveRestrictionsUI() {
-  const isRestricted = sessionLoginType === "qr_restricted" || activeRestrictions.is_restricted;
+  const isRestricted = isQrRestrictedSession();
   const disableProf = isRestricted && activeRestrictions.disable_profile;
 
   const badge = document.getElementById("restricted-mode-indicator");
   if (badge) badge.style.display = isRestricted ? "inline-flex" : "none";
+
+  // Keep connected drives & provider drawers visible under "All Vault Files" in QR mode
+  ["google", "onedrive", "sftp"].forEach((provider) => {
+    const countEl = document.getElementById(`sidebar-${provider}-count`);
+    const drawerEl = document.getElementById(`sidebar-accounts-${provider}`);
+    const groupEl = countEl?.closest(".sidebar-provider-group") || countEl?.closest(".rail-btn");
+    if (groupEl) {
+      groupEl.style.display = "";
+      groupEl.style.pointerEvents = "auto";
+      groupEl.style.opacity = "1";
+    }
+    if (drawerEl) {
+      drawerEl.style.pointerEvents = "auto";
+      drawerEl.style.opacity = "1";
+    }
+  });
+  expandAllSidebarDriveDrawersInQrMode();
 
   updateUploadButtonVisibility();
 
@@ -376,6 +518,9 @@ function startBackgroundSyncAndRestrictionMonitor() {
           fetch("/api/logout", { method: "POST" }).then(() => window.location.replace("/"));
           return;
         }
+        if (data.user_name || data.user_email) {
+          hydrateHeaderUserIdentity(data);
+        }
         if (data.restrictions) {
           const prevMask = activeRestrictions.mask_folders;
           const prevProf = activeRestrictions.disable_profile;
@@ -433,11 +578,9 @@ async function syncCloudAndReloadExplorer(showFeedbackToast = false) {
   if (btnEl) btnEl.disabled = true;
 
   try {
-    // 1. Trigger live Google Drive & OneDrive delta sync on backend
     const syncRes = await fetch("/api/cloud/sync-all", { method: "POST" });
     const syncData = syncRes.ok ? await syncRes.json() : null;
 
-    // 2. Re-fetch unified vault tree if manual refresh clicked OR external cloud change detected
     if (showFeedbackToast || (syncData && syncData.changed)) {
       const vaultRes = await fetch("/fetch-vault-list", {
         method: "POST",
@@ -453,7 +596,10 @@ async function syncCloudAndReloadExplorer(showFeedbackToast = false) {
             sessionStorage.setItem("ps_cached_vault_tree", JSON.stringify(globalVaultTree));
           } catch (e) {}
 
-          if (typeof renderCurrentFolderLevel === "function") {
+          applyActiveWorkspaceContainerVisibility();
+          if (window.activeWorkspaceTab === "dashboard" && typeof renderCloudlyDashboardOverview === "function") {
+            renderCloudlyDashboardOverview();
+          } else if (typeof renderCurrentFolderLevel === "function") {
             renderCurrentFolderLevel();
           }
           if (typeof updateUploadButtonVisibility === "function") {
@@ -486,14 +632,12 @@ function manualRefreshVaultExplorer() {
 function startCloudAutoRefreshLoop() {
   if (cloudAutoRefreshTimer) clearInterval(cloudAutoRefreshTimer);
 
-  // Poll connected Google Drive & OneDrive every 12 seconds while tab is active
   cloudAutoRefreshTimer = setInterval(() => {
     if (document.visibilityState === "visible") {
       syncCloudAndReloadExplorer(false);
     }
   }, 12000);
 
-  // Instant sync the moment user switches back to PrintSafe tab from Google Drive / OneDrive
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
       syncCloudAndReloadExplorer(false);
@@ -521,7 +665,12 @@ async function handleIncomingSyncEvent(ev) {
       const vData = await vaultResponse.json();
       globalVaultTree = vData.tree || [];
       try { sessionStorage.setItem("ps_cached_vault_tree", JSON.stringify(globalVaultTree)); } catch (e) {}
-      renderCurrentFolderLevel();
+      applyActiveWorkspaceContainerVisibility();
+      if (window.activeWorkspaceTab === "dashboard" && typeof renderCloudlyDashboardOverview === "function") {
+        renderCloudlyDashboardOverview();
+      } else {
+        renderCurrentFolderLevel();
+      }
     }
     showToast(`📲 Instant Sync: "${ev.filename}" (${ev.folder_path})`, "success");
   }
@@ -706,6 +855,10 @@ async function saveUserProfileDetails() {
       const avatarEl = document.getElementById("header-user-avatar");
       if (nameEl) nameEl.innerText = newName;
       if (avatarEl) avatarEl.innerText = newName.charAt(0).toUpperCase();
+      try {
+        const curEmail = document.getElementById("dropdown-user-email")?.innerText || "user@printsafe.cloud";
+        sessionStorage.setItem("ps_cached_user_profile", JSON.stringify({ name: newName, email: curEmail }));
+      } catch (e) {}
     }
   } catch (e) {
     showToast("Failed to update profile", "error");
@@ -780,11 +933,17 @@ async function loadConnectedCloudAccounts() {
     const res = await fetch("/api/cloud/accounts");
     if (!res.ok) return;
     const data = await res.json();
+    if (data.user_profile && (data.user_profile.user_name || data.user_profile.user_email)) {
+      hydrateHeaderUserIdentity(data.user_profile);
+    }
     connectedAccountsList = data.accounts || [];
     try { sessionStorage.setItem("ps_cached_cloud_accounts", JSON.stringify(connectedAccountsList)); } catch (e) {}
     updateCloudSummaryBadges();
     renderMultiCloudManagerUI();
     updateUploadButtonVisibility();
+    if (window.activeWorkspaceTab === "dashboard" && typeof renderCloudlyDashboardOverview === "function") {
+      renderCloudlyDashboardOverview();
+    }
   } catch (e) {}
 }
 
@@ -845,6 +1004,8 @@ function updateCloudSummaryBadges() {
   if (oCountEl) oCountEl.innerText = oAccounts.length;
   renderSidebarProviderTree("google", gAccounts);
   renderSidebarProviderTree("onedrive", oAccounts);
+  updateCombinedSidebarStorageBar();
+  expandAllSidebarDriveDrawersInQrMode();
 }
 
 // ========================================================================
@@ -853,11 +1014,18 @@ function updateCloudSummaryBadges() {
 function renderSidebarProviderTree(provider, accounts) {
   const container = document.getElementById(`sidebar-accounts-${provider}`);
   if (!container) return;
+  const isRestricted = isQrRestrictedSession();
 
   if (accounts.length === 0) {
-    container.innerHTML = `<div class="nested-acc-item" onclick="openCloudAccountFormModal('add', '${provider}')"><span><i class="ri-add-circle-line"></i> Connect Account</span></div>`;
+    container.innerHTML = isRestricted
+      ? `<div class="nested-acc-item" style="opacity:0.65;cursor:default;"><span>No accounts connected</span></div>`
+      : `<div class="nested-acc-item" onclick="openCloudAccountFormModal('add', '${provider}')"><span><i class="ri-add-circle-line"></i> Connect Account</span></div>`;
     return;
   }
+
+  const addAnotherHtml = isRestricted
+    ? ""
+    : `<div class="nested-acc-item" onclick="openCloudAccountFormModal('add', '${provider}')" style="color:var(--accent);margin-top:2px;cursor:pointer;"><span><i class="ri-add-line"></i> Add Another</span></div>`;
 
   container.innerHTML =
     accounts
@@ -868,31 +1036,41 @@ function renderSidebarProviderTree(provider, accounts) {
         const safeLabel = label.replace(/'/g, "\\'");
         const isActiveFilter = window.activeAccountFilterId === acc.account_id;
 
-        const actionBtnHtml = !isEnabled
-          ? ""
-          : acc.is_expired
-          ? `<button onclick="startDirectOAuthReconnect('${provider}', '${safeLabel}')" style="background:none;border:none;color:#ef4444;cursor:pointer;padding:2px 4px;" title="Reconnect Expired Drive">
-               <i class="ri-plug-line" style="font-size:14px;"></i>
-             </button>`
-          : `<button onclick="openAccountPickerModal('${acc.account_id}', '${safeLabel}', '${provider}'); toggleMobileSidebar(false);" style="background:none;border:none;color:var(--accent);cursor:pointer;padding:2px 4px;" title="Browse & Mount Folders">
-               <i class="ri-folder-add-line" style="font-size:14px;"></i>
-             </button>`;
+        const uBytes = Number(acc.used_bytes || 0);
+        const tBytes = Number(acc.total_bytes || 0);
+        const quotaSubHtml =
+          uBytes > 0 || tBytes > 0
+            ? `<div style="font-size:10px;opacity:0.75;margin-top:1px;">${formatFileSize(uBytes)} / ${tBytes > 0 ? formatFileSize(tBytes) : "∞"}</div>`
+            : "";
+
+        const actionBtnHtml =
+          isRestricted || !isEnabled
+            ? ""
+            : acc.is_expired
+            ? `<button onclick="startDirectOAuthReconnect('${provider}', '${safeLabel}')" style="background:none;border:none;color:#ef4444;cursor:pointer;padding:2px 4px;" title="Reconnect Expired Drive">
+                 <i class="ri-plug-line" style="font-size:14px;"></i>
+               </button>`
+            : `<button onclick="openAccountPickerModal('${acc.account_id}', '${safeLabel}', '${provider}'); toggleMobileSidebar(false);" style="background:none;border:none;color:var(--accent);cursor:pointer;padding:2px 4px;" title="Browse & Mount Folders">
+                 <i class="ri-folder-add-line" style="font-size:14px;"></i>
+               </button>`;
 
         return `
       <div class="nested-acc-item ${isActiveFilter ? "active" : ""}" style="${isActiveFilter ? "background:var(--accent-soft);color:var(--accent);font-weight:700;" : ""}">
         <div onclick="filterVaultByAccount('${provider}', '${acc.account_id}', this); toggleMobileSidebar(false);" style="display:flex;align-items:center;gap:8px;overflow:hidden;flex:1;cursor:pointer;" title="Show mounted files from ${label}">
           <span class="nested-acc-dot ${statusClass}"></span>
-          <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${!isEnabled ? "opacity:0.65;" : ""}">${label}</span>
+          <div style="overflow:hidden;flex:1;${!isEnabled ? "opacity:0.65;" : ""}">
+            <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${label}</div>
+            ${quotaSubHtml}
+          </div>
         </div>
         ${actionBtnHtml}
       </div>`;
       })
-      .join("") +
-    `<div class="nested-acc-item" onclick="openCloudAccountFormModal('add', '${provider}')" style="color:var(--accent);margin-top:2px;cursor:pointer;"><span><i class="ri-add-line"></i> Add Another</span></div>`;
+      .join("") + addAnotherHtml;
 }
 
 function openCloudDriveManager(show) {
-  if (sessionLoginType === "qr_restricted") {
+  if (isQrRestrictedSession()) {
     showToast("Cloud Manager is locked in Restricted QR Mode", "error");
     return;
   }
@@ -1251,7 +1429,6 @@ async function triggerCloudAssetImport(name, cloudId, type, btnEl = null) {
   const currentFolder = cloudNavigationStack[cloudNavigationStack.length - 1]?.id || "root";
   const cacheKey = `${accId}:${currentFolder}`;
 
-  // 1. Optimistic UI update: immediately switch button to "Unmount"
   if (btnEl) {
     btnEl.disabled = true;
     btnEl.innerHTML = `<i class="ri-loader-4-line"></i> Mounting...`;
@@ -1273,7 +1450,6 @@ async function triggerCloudAssetImport(name, cloudId, type, btnEl = null) {
     });
     const result = await response.json();
     if (result.success) {
-      // Update RAM cache item status immediately
       if (Array.isArray(cloudPickerDirCache[cacheKey])) {
         cloudPickerDirCache[cacheKey] = cloudPickerDirCache[cacheKey].map((item) =>
           item.cloud_id === cloudId ? { ...item, is_mounted: true } : item
@@ -1423,16 +1599,22 @@ async function saveUserQuickPin() {
 // ========================================================================
 function renderSidebarAndModalSftpUI() {
   const list = Array.isArray(connectedRemoteStoragesList) ? connectedRemoteStoragesList : [];
+  const isRestricted = isQrRestrictedSession();
 
-  // 1. Update Sidebar Count Badge & Nested Drawer (with Browse Folder icon like Google/OneDrive)
   const countEl = document.getElementById("sidebar-sftp-count");
   if (countEl) countEl.innerText = list.length;
 
   const sideContainer = document.getElementById("sidebar-accounts-sftp");
   if (sideContainer) {
     if (list.length === 0) {
-      sideContainer.innerHTML = `<div class="nested-acc-item" onclick="openHostingServerFormModal('add'); toggleMobileSidebar(false);"><span><i class="ri-add-circle-line"></i> Connect Server</span></div>`;
+      sideContainer.innerHTML = isRestricted
+        ? `<div class="nested-acc-item" style="opacity:0.65;cursor:default;"><span>No servers connected</span></div>`
+        : `<div class="nested-acc-item" onclick="openHostingServerFormModal('add'); toggleMobileSidebar(false);"><span><i class="ri-add-circle-line"></i> Connect Server</span></div>`;
     } else {
+      const addServerHtml = isRestricted
+        ? ""
+        : `<div class="nested-acc-item" onclick="openHostingServerFormModal('add'); toggleMobileSidebar(false);" style="color:var(--accent);margin-top:2px;cursor:pointer;"><span><i class="ri-add-line"></i> Add Server</span></div>`;
+
       sideContainer.innerHTML =
         list
           .map((s) => {
@@ -1441,11 +1623,12 @@ function renderSidebarAndModalSftpUI() {
             const safeLabel = label.replace(/'/g, "\\'");
             const isActiveFilter = window.activeAccountFilterId === s.storage_id;
 
-            const browseBtnHtml = isEnabled
-              ? `<button onclick="openAccountPickerModal('${s.storage_id}', '${safeLabel}', 'sftp'); toggleMobileSidebar(false);" style="background:none;border:none;color:var(--accent);cursor:pointer;padding:2px 4px;" title="Browse Hosting Folders">
-                   <i class="ri-folder-add-line" style="font-size:14px;"></i>
-                 </button>`
-              : "";
+            const browseBtnHtml =
+              !isRestricted && isEnabled
+                ? `<button onclick="openAccountPickerModal('${s.storage_id}', '${safeLabel}', 'sftp'); toggleMobileSidebar(false);" style="background:none;border:none;color:var(--accent);cursor:pointer;padding:2px 4px;" title="Browse Hosting Folders">
+                     <i class="ri-folder-add-line" style="font-size:14px;"></i>
+                   </button>`
+                : "";
 
             return `
             <div class="nested-acc-item ${isActiveFilter ? "active" : ""}" style="${isActiveFilter ? "background:var(--accent-soft);color:var(--accent);font-weight:700;" : ""}">
@@ -1456,12 +1639,12 @@ function renderSidebarAndModalSftpUI() {
               ${browseBtnHtml}
             </div>`;
           })
-          .join("") +
-        `<div class="nested-acc-item" onclick="openHostingServerFormModal('add'); toggleMobileSidebar(false);" style="color:var(--accent);margin-top:2px;cursor:pointer;"><span><i class="ri-add-line"></i> Add Server</span></div>`;
+          .join("") + addServerHtml;
     }
   }
 
-  // Helper to build Cloud-Drive-Manager-style rows for both modals
+  expandAllSidebarDriveDrawersInQrMode();
+
   const buildServerRowHtml = (s) => {
     const isEnabled = s.is_enabled === undefined ? true : Boolean(s.is_enabled);
     const proto = (s.protocol || "sftp").toUpperCase();
@@ -1496,7 +1679,6 @@ function renderSidebarAndModalSftpUI() {
       </div>`;
   };
 
-  // 2. Update Multi-Account Cloud & Hosting Manager Modal List
   const managerBox = document.getElementById("cloud-manager-sftp-list");
   if (managerBox) {
     managerBox.innerHTML =
@@ -1505,7 +1687,6 @@ function renderSidebarAndModalSftpUI() {
         : list.map((s) => buildServerRowHtml(s)).join("");
   }
 
-  // 3. Update Hosting Storage Manager Modal List
   const countPill = document.getElementById("rem-connected-count-pill");
   if (countPill) countPill.innerText = `${list.length} ${list.length === 1 ? "Server" : "Servers"}`;
 
@@ -1518,7 +1699,6 @@ function renderSidebarAndModalSftpUI() {
   }
 }
 
-// Handles sidebar click + active highlight state for FTP/SFTP servers
 function selectSidebarSftpServer(storageId, el) {
   window.activeAccountFilterId = storageId;
   document.querySelectorAll(".rail-btn, .nested-acc-item").forEach((node) => {
@@ -1635,6 +1815,9 @@ async function loadConnectedRemoteStorages() {
     connectedRemoteStoragesList = data.storages || [];
     try { sessionStorage.setItem("ps_cached_sftp_storages", JSON.stringify(connectedRemoteStoragesList)); } catch (e) {}
     renderSidebarAndModalSftpUI();
+    if (window.activeWorkspaceTab === "dashboard" && typeof renderCloudlyDashboardOverview === "function") {
+      renderCloudlyDashboardOverview();
+    }
   } catch (e) {}
 }
 

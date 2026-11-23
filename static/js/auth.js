@@ -5,6 +5,20 @@ let activeLoginSubMethod = "email"; // 'email' | 'otp' | 'pin'
 let verifiedSignInEmail = "";
 let isLoginSubmitting = false;
 
+// Re-render folder cards automatically whenever UI Design System style changes
+(function observeDataStyleChanges() {
+  const observer = new MutationObserver((mutations) => {
+    for (const m of mutations) {
+      if (m.type === "attributes" && m.attributeName === "data-style") {
+        if (typeof renderCurrentFolderLevel === "function") {
+          renderCurrentFolderLevel();
+        }
+      }
+    }
+  });
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-style"] });
+})();
+
 // ========================================================================
 // LOCK / UNLOCK OPPOSITE TABS, SUB-METHODS, OAUTH & QR BUTTONS
 // ========================================================================
@@ -117,7 +131,8 @@ function setLoginSubMethod(method) {
   resetSignInFlows();
 
   ["email", "otp", "pin"].forEach((m) => {
-    document.getElementById(`method-btn-${m}`)?.classList.toggle("active", m === method); const flowEl = document.getElementById(`signin-flow-${m}`);
+    document.getElementById(`method-btn-${m}`)?.classList.toggle("active", m === method);
+    const flowEl = document.getElementById(`signin-flow-${m}`);
     if (flowEl) flowEl.style.display = m === method ? "block" : "none";
   });
 }
